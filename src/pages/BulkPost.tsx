@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { ComposePayload, Template } from '../db/types';
@@ -42,6 +42,7 @@ export function BulkPost() {
     [],
     undefined,
   );
+  const settingsRow = useLiveQuery(() => db.settings.get('app'), [], undefined);
 
   /* ---------------------------- compose state ---------------------------- */
   const [accountIds, setAccountIds] = useState<string[]>([]);
@@ -56,6 +57,13 @@ export function BulkPost() {
   const [replyPermission, setReplyPermission] = useState<ReplyPermission>('everyone');
   const [paidPartnership, setPaidPartnership] = useState(false);
   const [intervalSec, setIntervalSec] = useState(5);
+  // Until the operator edits it here, the interval follows the
+  // default from 設定 (M5). Once touched, the local value wins.
+  const intervalTouched = useRef(false);
+  useEffect(() => {
+    const fromSettings = settingsRow?.settings.defaultIntervalSec;
+    if (!intervalTouched.current && fromSettings) setIntervalSec(fromSettings);
+  }, [settingsRow]);
   const [reserveAt, setReserveAt] = useState(() => toLocalInputValue(new Date(Date.now() + 60 * 60_000)));
   const [templatePick, setTemplatePick] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -212,12 +220,18 @@ export function BulkPost() {
           <div className="compose-grid">
             <section className="panel">
               <h2 className="panel-title">対象アカウント</h2>
-              <AccountOrderPicker
-                accounts={accounts ?? []}
-                value={accountIds}
-                onChange={setAccountIds}
-                disabled={!!runningJob}
-              />
+              {accounts === undefined ? (
+                <p className="faded">読み込み中…</p>
+              ) : accounts.length === 0 ? (
+                <p className="faded">アカウントがまだ登録されていません。アカウント画面から追加してください。</p>
+              ) : (
+                <AccountOrderPicker
+                  accounts={accounts}
+                  value={accountIds}
+                  onChange={setAccountIds}
+                  disabled={!!runningJob}
+                />
+              )}
             </section>
 
             <section className="panel">
@@ -460,9 +474,10 @@ export function BulkPost() {
                   min={INTERVAL_MIN_SEC}
                   max={INTERVAL_MAX_SEC}
                   value={intervalSec}
-                  onChange={(e) =>
-                    setIntervalSec(Math.min(INTERVAL_MAX_SEC, Math.max(INTERVAL_MIN_SEC, Number(e.target.value) || INTERVAL_MIN_SEC)))
-                  }
+                  onChange={(e) => {
+                    intervalTouched.current = true;
+                    setIntervalSec(Math.min(INTERVAL_MAX_SEC, Math.max(INTERVAL_MIN_SEC, Number(e.target.value) || INTERVAL_MIN_SEC)));
+                  }}
                 />
                 <p className="hint">アカウントごとに上から順に、この間隔を空けて投稿します（{INTERVAL_MIN_SEC}〜{INTERVAL_MAX_SEC}秒）。</p>
               </div>

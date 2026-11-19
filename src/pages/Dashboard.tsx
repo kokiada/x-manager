@@ -20,6 +20,29 @@ export function Dashboard() {
     return <p className="faded">読み込み中…</p>;
   }
 
+  if (accounts.length === 0) {
+    return (
+      <div>
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">
+              <span className="page-no">01</span>ダッシュボード
+            </h1>
+            <p className="page-lede">全アカウントの状態サマリと、対応が必要なアラート。</p>
+          </div>
+        </div>
+        <div className="placeholder-box">
+          <div className="ph-tag">EMPTY</div>
+          <p>アカウントがまだ登録されていません。</p>
+          <p style={{ marginBottom: 0 }}>
+            <Link className="btn small" to="/accounts">アカウントを追加する</Link>{' '}
+            <Link className="btn small" to="/data">CSV・バックアップから取り込む</Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const countBy = (s: AccountStatus) => accounts.filter((a) => a.status === s).length;
   const alerts = accounts.filter((a) => a.status === 'locked' || a.status === 'frozen');
   const totalNotifications = accounts.reduce((sum, a) => sum + a.notifications, 0);

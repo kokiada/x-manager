@@ -8,7 +8,9 @@ import { AccountDetail } from './pages/AccountDetail';
 import { Accounts } from './pages/Accounts';
 import { BulkPost } from './pages/BulkPost';
 import { Dashboard } from './pages/Dashboard';
+import { DataManagement } from './pages/DataManagement';
 import { Placeholder } from './pages/Placeholder';
+import { Settings } from './pages/Settings';
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -36,6 +38,8 @@ export default function App() {
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/accounts/:id" element={<AccountDetail />} />
               <Route path="/bulk-post" element={<BulkPost />} />
+              <Route path="/data" element={<DataManagement />} />
+              <Route path="/settings" element={<Settings />} />
               {SECTIONS.filter((s) => !s.ready && s.no !== '03').map((s) => (
                 <Route key={s.no} path={s.path} element={<Placeholder section={s} />} />
               ))}

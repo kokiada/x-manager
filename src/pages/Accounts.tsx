@@ -5,6 +5,8 @@ import { db } from '../db/db';
 import type { Account, NewAccount } from '../db/types';
 import { createAccount, updateAccount } from '../db/repository';
 import { executor } from '../executor';
+import { accountsToCsv } from '../lib/accountCsv';
+import { downloadTextFile } from '../lib/csv';
 import { compactCount, checkedAtLabel } from '../lib/format';
 import { AccountForm } from '../components/AccountForm';
 import { GroupManager } from '../components/GroupManager';
@@ -106,6 +108,16 @@ export function Accounts() {
           </p>
         </div>
         <div className="toolbar" style={{ marginBottom: 0 }}>
+          <Button
+            onClick={() => {
+              if (!accounts || !groups || !proxyGroups) return;
+              downloadTextFile('accounts.csv', accountsToCsv(accounts, groups, proxyGroups));
+              toast.push('アカウントCSVを書き出しました', 'ok');
+            }}
+            disabled={!accounts || accounts.length === 0}
+          >
+            CSV書出
+          </Button>
           <Button onClick={() => setModal({ kind: 'groups' })}>グループ管理</Button>
           <Button variant="primary" onClick={() => setModal({ kind: 'add' })}>
             ＋ アカウント追加
@@ -157,7 +169,9 @@ export function Accounts() {
         {accounts === undefined && <div className="ledger-empty">読み込み中…</div>}
         {accounts !== undefined && filtered.length === 0 && (
           <div className="ledger-empty">
-            条件に合うアカウントがありません。検索条件を変えるか、アカウントを追加してください。
+            {accounts.length === 0
+              ? 'アカウントがまだ登録されていません。「アカウント追加」から登録するか、データ管理からCSVで取り込んでください。'
+              : '条件に合うアカウントがありません。検索条件を変えるか、アカウントを追加してください。'}
           </div>
         )}
         {filtered.map((a) => (

@@ -22,8 +22,8 @@ export const SECTIONS: Section[] = [
   { no: '06', path: '/ban-check', label: 'バンチェック', glyph: '◎', milestone: 'M3', ready: false, description: 'サーチバン／リプライバンのチェックと定期実行' },
   { no: '07', path: '/analytics', label: '分析', glyph: '↗', milestone: 'M4', ready: false, description: 'ポスト分析・ポスト追跡・フォロワー推移' },
   { no: '08', path: '/inbox', label: '通知 / DM', glyph: '✉', milestone: 'M4', ready: false, description: '全アカウントの通知とDMの集約' },
-  { no: '09', path: '/data', label: 'データ管理', glyph: '⇅', milestone: 'M5', ready: false, description: 'CSV入出力・バックアップ・端末同期' },
-  { no: '10', path: '/settings', label: '設定', glyph: '⚙', milestone: 'M5', ready: false, description: 'プラン・同時保持数・定期チェック設定' },
+  { no: '09', path: '/data', label: 'データ管理', glyph: '⇅', milestone: 'M5', ready: true, description: 'CSV入出力・バックアップ・端末同期' },
+  { no: '10', path: '/settings', label: '設定', glyph: '⚙', milestone: 'M5', ready: true, description: 'プラン・同時保持数・定期チェック設定' },
 ];
 
 const PRIMARY_TABS = [SECTIONS[0], SECTIONS[1], SECTIONS[3], SECTIONS[5]];

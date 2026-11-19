@@ -717,6 +717,28 @@ button { font-family: inherit; }
 .badge.jb-skipped { color: var(--c-off); }
 .badge.jb-pending { color: var(--c-faded); }
 
+/* ---------- M5: data management & settings ---------- */
+
+.plan-list { border: 1px solid var(--c-line); background: var(--c-panel); }
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-3);
+  border-bottom: 1px solid var(--c-line);
+  cursor: pointer;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+}
+.plan-row:last-child { border-bottom: none; }
+.plan-row:hover { background: var(--c-raise); }
+.plan-row.selected { background: var(--c-raise); box-shadow: inset 3px 0 0 var(--c-amber); }
+.plan-row input[type="radio"] { accent-color: var(--c-amber); width: 16px; height: 16px; flex: none; }
+.plan-price { margin-left: auto; font-family: var(--font-mono); font-weight: 600; }
+.badge.rs-created { color: var(--c-ok); }
+.badge.rs-updated { color: var(--c-info); }
+.badge.rs-skipped { color: var(--c-warn); }
+
 /* ---------- responsive: tablet / mobile ---------- */
 
 @media (max-width: 900px) {

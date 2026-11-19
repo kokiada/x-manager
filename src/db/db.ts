@@ -6,6 +6,7 @@ import type {
   ProxyGroup,
   RandomWordSet,
   Reservation,
+  SettingsRow,
   Template,
   TemplateGroup,
 } from './types';
@@ -24,6 +25,7 @@ export const db = new Dexie('x-manager') as Dexie & {
   randomWordSets: EntityTable<RandomWordSet, 'no'>;
   postJobs: EntityTable<PostJob, 'id'>;
   reservations: EntityTable<Reservation, 'id'>;
+  settings: EntityTable<SettingsRow, 'key'>;
 };
 
 db.version(1).stores({
@@ -39,4 +41,9 @@ db.version(2).stores({
   randomWordSets: 'no',
   postJobs: 'id, createdAt, status',
   reservations: 'id, scheduledAt, status',
+});
+
+/* M5: app settings (plan, browser keep-alive, check schedules). */
+db.version(3).stores({
+  settings: 'key',
 });

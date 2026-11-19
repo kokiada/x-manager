@@ -1,6 +1,7 @@
 import { db } from './db';
 import type {
   Account,
+  AppSettings,
   Group,
   NewAccount,
   NewTemplate,
@@ -11,8 +12,10 @@ import type {
   Template,
   TemplateGroup,
 } from './types';
-import { TEMPLATE_GROUP_MAX, TEMPLATE_MAX } from './types';
+import { DEFAULT_SETTINGS, TEMPLATE_GROUP_MAX, TEMPLATE_MAX } from './types';
 import type { RandomWordSets } from '../lib/randomText';
+import type { AccountCsvPlan, GroupRef } from '../lib/accountCsv';
+import type { BackupTables } from '../lib/backup';
 
 const uid = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -299,4 +302,170 @@ export async function listDueReservations(now: number): Promise<Reservation[]> {
   return all
     .filter((r) => r.scheduledAt <= now)
     .sort((a, b) => a.scheduledAt - b.scheduledAt);
+}
+
+/* ====================== M5: settings (single row) ====================== */
+
+/** Current app settings, with defaults filling anything unset. */
+export async function getSettings(): Promise<AppSettings> {
+  const row = await db.settings.get('app');
+  if (!row) return { ...DEFAULT_SETTINGS };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...row.settings,
+    accountCheck: { ...DEFAULT_SETTINGS.accountCheck, ...row.settings.accountCheck },
+    searchBanCheck: { ...DEFAULT_SETTINGS.searchBanCheck, ...row.settings.searchBanCheck },
+  };
+}
+
+export async function saveSettings(settings: AppSettings): Promise<void> {
+  await db.settings.put({ key: 'app', settings });
+}
+
+/* ==================== M5: account CSV import apply ==================== */
+
+/**
+ * Apply a plan built by lib/accountCsv's planner: create the new
+ * groups, rename / reorder existing ones, then create and update the
+ * accounts — all in one transaction.
+ */
+export async function applyAccountCsvPlan(plan: AccountCsvPlan): Promise<void> {
+  const tables = [db.groups, db.accounts];
+  await db.transaction('rw', tables, async () => {
+    const newGroupIdByName = new Map<string, string>();
+    const existingCount = await db.groups.count();
+    for (const [i, name] of plan.newGroupNames.entries()) {
+      const group: Group = { id: uid(), name, order: existingCount + i, createdAt: Date.now() };
+      await db.groups.add(group);
+      newGroupIdByName.set(name, group.id);
+    }
+    for (const rename of plan.groupRenames) {
+      await db.groups.update(rename.groupId, { name: rename.name });
+    }
+    for (const entry of plan.groupOrder) {
+      await db.groups.update(entry.groupId, { order: entry.order });
+    }
+
+    const resolve = (ref: GroupRef): string | null =>
+      ref.kind === 'existing' ? ref.id : ref.kind === 'new' ? (newGroupIdByName.get(ref.name) ?? null) : null;
+
+    const now = Date.now();
+    for (const op of plan.ops) {
+      if (op.type === 'create') {
+        const account: Account = {
+          ...op.account,
+          groupId: resolve(op.groupRef),
+          order: op.order,
+          id: uid(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        await db.accounts.add(account);
+      } else {
+        await db.accounts.update(op.accountId, {
+          displayName: op.displayName,
+          groupId: resolve(op.groupRef),
+          order: op.order,
+          updatedAt: now,
+        });
+      }
+    }
+  });
+}
+
+/* ==================== M5: backup data operations ====================== */
+
+const ALL_TABLES = [
+  db.groups,
+  db.proxyGroups,
+  db.accounts,
+  db.templateGroups,
+  db.templates,
+  db.randomWordSets,
+  db.postJobs,
+  db.reservations,
+  db.settings,
+] as const;
+
+/** Snapshot every table (plus settings) for a full backup. */
+export async function exportAllTables(): Promise<BackupTables> {
+  const [groups, proxyGroups, accounts, templateGroups, templates, randomWordSets, postJobs, reservations] =
+    await Promise.all([
+      db.groups.toArray(),
+      db.proxyGroups.toArray(),
+      db.accounts.toArray(),
+      db.templateGroups.toArray(),
+      db.templates.toArray(),
+      db.randomWordSets.toArray(),
+      db.postJobs.toArray(),
+      db.reservations.toArray(),
+    ]);
+  const settingsRow = await db.settings.get('app');
+  return {
+    groups,
+    proxyGroups,
+    accounts,
+    templateGroups,
+    templates,
+    randomWordSets,
+    postJobs,
+    reservations,
+    settings: settingsRow?.settings ?? null,
+  };
+}
+
+/**
+ * 置き換え (replace) restore for full backups (research §15-1):
+ * every table is cleared and replaced with the backup's contents.
+ */
+export async function replaceAllTables(tables: BackupTables): Promise<void> {
+  await db.transaction('rw', ALL_TABLES, async () => {
+    for (const table of ALL_TABLES) await table.clear();
+    if (tables.groups.length) await db.groups.bulkAdd(tables.groups);
+    if (tables.proxyGroups.length) await db.proxyGroups.bulkAdd(tables.proxyGroups);
+    if (tables.accounts.length) await db.accounts.bulkAdd(tables.accounts);
+    if (tables.templateGroups.length) await db.templateGroups.bulkAdd(tables.templateGroups);
+    if (tables.templates.length) await db.templates.bulkAdd(tables.templates);
+    if (tables.randomWordSets.length) await db.randomWordSets.bulkAdd(tables.randomWordSets);
+    if (tables.postJobs.length) await db.postJobs.bulkAdd(tables.postJobs);
+    if (tables.reservations.length) await db.reservations.bulkAdd(tables.reservations);
+    if (tables.settings) await db.settings.put({ key: 'app', settings: tables.settings });
+  });
+}
+
+export interface MergeResult {
+  addedGroups: number;
+  addedProxyGroups: number;
+  addedAccounts: number;
+  skippedAccounts: number;
+}
+
+/**
+ * 統合 (merge) restore for group backups (research §15-2): rows whose
+ * ID already exists are skipped — accounts explicitly so — and
+ * nothing is ever deleted.
+ */
+export async function mergeGroupTables(subset: BackupTables): Promise<MergeResult> {
+  const result: MergeResult = { addedGroups: 0, addedProxyGroups: 0, addedAccounts: 0, skippedAccounts: 0 };
+  await db.transaction('rw', db.groups, db.proxyGroups, db.accounts, async () => {
+    for (const group of subset.groups) {
+      if (await db.groups.get(group.id)) continue;
+      await db.groups.add(group);
+      result.addedGroups++;
+    }
+    for (const proxy of subset.proxyGroups) {
+      if (await db.proxyGroups.get(proxy.id)) continue;
+      await db.proxyGroups.add(proxy);
+      result.addedProxyGroups++;
+    }
+    for (const account of subset.accounts) {
+      if (await db.accounts.get(account.id)) {
+        result.skippedAccounts++;
+        continue;
+      }
+      await db.accounts.add(account);
+      result.addedAccounts++;
+    }
+  });
+  return result;
 }

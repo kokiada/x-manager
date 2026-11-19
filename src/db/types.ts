@@ -75,6 +75,17 @@ export interface Account {
    * Stored only in this device's IndexedDB and always masked in the UI.
    */
   authToken?: string;
+  /**
+   * X login credentials, kept for the operator's ledger and for the
+   * account CSV (§5-1). Stored on-device only; settable via the CSV
+   * only when the account is first created (XBoard rule).
+   */
+  loginId?: string;
+  loginPassword?: string;
+  /** 2FA (TOTP) secret token, same handling as the login credentials. */
+  twoFactorSecret?: string;
+  /** Display order within the account's group (CSV row order, §5-1). */
+  order?: number;
   followers: number;
   following: number;
   /** Unread notification / DM counts as of the last account check. */
@@ -88,6 +99,64 @@ export interface Account {
 }
 
 export type NewAccount = Omit<Account, 'id' | 'createdAt' | 'updatedAt'>;
+
+/* ====================== M5: plans & app settings ====================== */
+
+/** Contract plans from the LP (research §18-1). No feature differences. */
+export interface PlanTier {
+  /** Max number of registered accounts. */
+  accounts: number;
+  monthlyPriceJpy: number;
+}
+
+export const PLAN_TIERS: PlanTier[] = [
+  { accounts: 20, monthlyPriceJpy: 3000 },
+  { accounts: 50, monthlyPriceJpy: 6000 },
+  { accounts: 100, monthlyPriceJpy: 10000 },
+  { accounts: 300, monthlyPriceJpy: 20000 },
+  { accounts: 500, monthlyPriceJpy: 30000 },
+];
+
+/**
+ * A daily scheduled-check setting (research §9-1 / §10). Only the
+ * setting is stored here; the scheduling engines themselves are a
+ * separate work package (M3).
+ */
+export interface CheckSchedule {
+  enabled: boolean;
+  /** Local time of day, "HH:MM". */
+  time: string;
+  /** Target group; null = all accounts. */
+  groupId: string | null;
+}
+
+export interface AppSettings {
+  /** Contracted plan, expressed as its account cap (see PLAN_TIERS). */
+  planAccounts: number;
+  /**
+   * Browsers kept open simultaneously （同時に開いておくブラウザ数）.
+   * Default 20; cannot exceed the plan's account cap.
+   */
+  maxConcurrentBrowsers: number;
+  /** Default interval (seconds) pre-filled on the bulk-post screen. */
+  defaultIntervalSec: number;
+  accountCheck: CheckSchedule;
+  searchBanCheck: CheckSchedule;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  planAccounts: 20,
+  maxConcurrentBrowsers: 20,
+  defaultIntervalSec: 5,
+  accountCheck: { enabled: false, time: '09:00', groupId: null },
+  searchBanCheck: { enabled: false, time: '09:30', groupId: null },
+};
+
+/** Single-row settings record stored in the `settings` table. */
+export interface SettingsRow {
+  key: 'app';
+  settings: AppSettings;
+}
 
 /* ============================ M2: bulk post ============================ */
 
