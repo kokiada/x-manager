@@ -1,0 +1,193 @@
+import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { db } from '../db/db';
+import type { NewAccount } from '../db/types';
+import { SEARCH_BAN_LABELS } from '../db/types';
+import { deleteAccount, updateAccount } from '../db/repository';
+import { executor } from '../executor';
+import { checkedAtLabel, fullCount, maskToken } from '../lib/format';
+import { AccountForm } from '../components/AccountForm';
+import { Button, Modal, StatusBadge, useToast } from '../components/ui';
+
+export function AccountDetail() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  // undefined = still loading, null = no such account
+  const account = useLiveQuery(
+    async () => (id ? ((await db.accounts.get(id)) ?? null) : null),
+    [id],
+    undefined,
+  );
+  const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), [], []);
+  const proxyGroups = useLiveQuery(() => db.proxyGroups.toArray(), [], []);
+
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState<'check' | 'ban' | null>(null);
+
+  if (account === undefined) return <p className="faded">読み込み中…</p>;
+  if (account === null || !account) {
+    return (
+      <div>
+        <p>アカウントが見つかりません。</p>
+        <Link className="btn" to="/accounts">一覧に戻る</Link>
+      </div>
+    );
+  }
+
+  const group = groups?.find((g) => g.id === account.groupId);
+  const proxy = proxyGroups?.find((p) => p.id === account.proxyGroupId);
+
+  const runCheck = async () => {
+    setBusy('check');
+    try {
+      await executor.checkAccount(account);
+      toast.push(`@${account.handle} のチェックが完了しました`, 'ok');
+    } catch {
+      toast.push('チェックに失敗しました', 'err');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runBanCheck = async () => {
+    const all = await db.accounts.toArray();
+    const via = all.find((a) => a.id !== account.id && a.status === 'logged_in');
+    if (!via) {
+      toast.push('チェックに使えるログイン済みアカウントが他にありません', 'err');
+      return;
+    }
+    setBusy('ban');
+    try {
+      const result = await executor.checkSearchBan(account, via);
+      if (result.topicVisible === null) {
+        toast.push('サーチバンチェックの取得に失敗しました（⚠）', 'err');
+      } else {
+        toast.push(
+          `サーチバン判定: 話題 ${result.topicVisible ? '○' : '✗'} / 最新 ${result.latestVisible ? '○' : '✗'}（確認: @${via.handle}）`,
+          result.topicVisible && result.latestVisible ? 'ok' : 'info',
+        );
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`@${account.handle}（${account.displayName}）を削除しますか？この操作は戻せません。`))
+      return;
+    await deleteAccount(account.id);
+    toast.push(`@${account.handle} を削除しました`, 'ok');
+    navigate('/accounts');
+  };
+
+  const submitEdit = async (input: NewAccount) => {
+    await updateAccount(account.id, input);
+    toast.push(`@${input.handle} を更新しました`, 'ok');
+    setEditing(false);
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">
+            <span className="page-no">03</span>
+            {account.displayName}
+          </h1>
+          <p className="page-lede mono">@{account.handle}</p>
+        </div>
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <Link className="btn ghost" to="/accounts">← 一覧</Link>
+          <Button onClick={runCheck} disabled={busy !== null}>
+            {busy === 'check' ? 'チェック中…' : 'アカウントチェック'}
+          </Button>
+          <Button onClick={runBanCheck} disabled={busy !== null}>
+            {busy === 'ban' ? '判定中…' : 'サーチバンチェック'}
+          </Button>
+          <Button variant="primary" onClick={() => setEditing(true)}>
+            編集
+          </Button>
+        </div>
+      </div>
+
+      <div className="detail-grid">
+        <div className="detail-cell">
+          <div className="k">ステータス</div>
+          <div className="v"><StatusBadge status={account.status} /></div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">サーチバン判定</div>
+          <div className="v">{SEARCH_BAN_LABELS[account.searchBan]}</div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">フォロワー / フォロー中</div>
+          <div className="v mono">
+            {fullCount(account.followers)} / {fullCount(account.following)}
+          </div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">通知 / DM</div>
+          <div className="v mono">
+            {account.notifications} 件 / {account.dmCount} 件
+          </div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">グループ</div>
+          <div className="v">{group?.name ?? '未分類'}</div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">プロキシ</div>
+          <div className="v">
+            {proxy ? (
+              <>
+                {proxy.name}
+                <div className="mono faded" style={{ fontSize: 12.5 }}>
+                  {proxy.host}:{proxy.port}
+                  {proxy.username ? ` / 認証 ${proxy.username}` : ''}
+                </div>
+              </>
+            ) : (
+              '直接接続'
+            )}
+          </div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">auth_token</div>
+          <div className="v mono">{maskToken(account.authToken)}</div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">最終チェック</div>
+          <div className="v mono">{checkedAtLabel(account.lastCheckedAt)}</div>
+        </div>
+        {account.memo && (
+          <div className="detail-cell" style={{ gridColumn: '1 / -1' }}>
+            <div className="k">メモ</div>
+            <div className="v" style={{ fontWeight: 500 }}>{account.memo}</div>
+          </div>
+        )}
+      </div>
+
+      <div className="toolbar" style={{ marginTop: 24 }}>
+        <span className="spacer" />
+        <Button variant="danger" onClick={handleDelete}>
+          このアカウントを削除
+        </Button>
+      </div>
+
+      {editing && (
+        <Modal title="アカウント編集" onClose={() => setEditing(false)}>
+          <AccountForm
+            initial={account}
+            groups={groups ?? []}
+            proxyGroups={proxyGroups ?? []}
+            onSubmit={submitEdit}
+            onCancel={() => setEditing(false)}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
