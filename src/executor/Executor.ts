@@ -1,4 +1,4 @@
-import type { Account, AccountStatus } from '../db/types';
+import type { Account, AccountStatus, ReplyPermission } from '../db/types';
 
 /**
  * Executor — the layer that actually delivers operations to X.
@@ -32,6 +32,8 @@ export interface PostContent {
   mediaCount?: number;
   /** Follow-up texts posted as a reply chain (ツリー投稿). */
   threadTexts?: string[];
+  /** Who may reply — normal posts only; on tree posts, segment 1 (§6-4). */
+  replyPermission?: ReplyPermission;
   paidPartnership?: boolean;
 }
 
@@ -41,6 +43,17 @@ export interface PostResult {
   /** ID/URL of the created post when ok. */
   postId?: string;
   postUrl?: string;
+  /** IDs of the tree continuations that were posted, in order. */
+  threadPostIds?: string[];
+  error?: string;
+  at: number;
+}
+
+/** Result of deleting one previously created post (research §6-1). */
+export interface DeletePostResult {
+  accountId: string;
+  postId: string;
+  ok: boolean;
   error?: string;
   at: number;
 }
@@ -84,6 +97,12 @@ export interface SearchBanCheckResult {
 export interface Executor {
   /** Post one (possibly threaded) post as the account. */
   executePost(account: Account, content: PostContent): Promise<PostResult>;
+  /**
+   * Delete one post previously created by executePost. Tree posts are
+   * deleted by calling this for the main post and each continuation —
+   * the console groups those calls into one operator action (§6-1).
+   */
+  deletePost(account: Account, postId: string): Promise<DeletePostResult>;
   /** Run one bulk action (like / repost / bookmark / follow). */
   executeAction(
     account: Account,

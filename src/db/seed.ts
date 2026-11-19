@@ -1,5 +1,12 @@
 import { db } from './db';
-import type { Account, Group, ProxyGroup } from './types';
+import type {
+  Account,
+  Group,
+  ProxyGroup,
+  RandomWordSet,
+  Template,
+  TemplateGroup,
+} from './types';
 
 /**
  * Demo seed data — clearly fictional accounts used so every screen
@@ -127,6 +134,38 @@ export const SEED_ACCOUNTS: Account[] = [
   },
 ];
 
+export const SEED_TEMPLATE_GROUPS: TemplateGroup[] = [
+  { id: 'tg-regular', name: '定期告知', order: 0, createdAt: now },
+  { id: 'tg-match', name: '試合日', order: 1, createdAt: now },
+];
+
+export const SEED_TEMPLATES: Template[] = [
+  {
+    id: 'tpl-01', no: 1, title: '朝のあいさつ（ランダム文言）',
+    body: '[Random1] 今日も一日よろしくお願いします。',
+    groupId: 'tg-regular', media: [], poll: null, thread: [],
+    createdAt: now, updatedAt: now,
+  },
+  {
+    id: 'tpl-02', no: 2, title: '試合日ツリー告知',
+    body: '本日は試合日です。キックオフは19:00、現地組もリモート組も一緒に盛り上がりましょう！',
+    groupId: 'tg-match', media: [], poll: null,
+    thread: ['チケット・アクセス情報は公式サイトをご確認ください。', '試合後の感想はこのスレッドでどうぞ。'],
+    createdAt: now, updatedAt: now,
+  },
+  {
+    id: 'tpl-03', no: 3, title: '注目選手アンケート',
+    body: '今節の注目選手は誰ですか？',
+    groupId: null, media: [], poll: { choices: ['FW', 'MF', 'DF', 'GK'] }, thread: [],
+    createdAt: now, updatedAt: now,
+  },
+];
+
+export const SEED_RANDOM_WORD_SETS: RandomWordSet[] = [
+  { no: 1, words: ['おはようございます！', 'おはようございます、本日もよろしくお願いします。', 'おはようございます。良い一日にしましょう。'] },
+  { no: 2, words: ['行ってきます', '行ってらっしゃい'] },
+];
+
 /** Populate the database with demo data when it is completely empty. */
 export async function seedIfEmpty(): Promise<void> {
   const count = await db.accounts.count();
@@ -135,5 +174,10 @@ export async function seedIfEmpty(): Promise<void> {
     await db.groups.bulkAdd(SEED_GROUPS);
     await db.proxyGroups.bulkAdd(SEED_PROXY_GROUPS);
     await db.accounts.bulkAdd(SEED_ACCOUNTS);
+  });
+  await db.transaction('rw', db.templateGroups, db.templates, db.randomWordSets, async () => {
+    await db.templateGroups.bulkAdd(SEED_TEMPLATE_GROUPS);
+    await db.templates.bulkAdd(SEED_TEMPLATES);
+    await db.randomWordSets.bulkAdd(SEED_RANDOM_WORD_SETS);
   });
 }

@@ -1,5 +1,14 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Account, Group, ProxyGroup } from './types';
+import type {
+  Account,
+  Group,
+  PostJob,
+  ProxyGroup,
+  RandomWordSet,
+  Reservation,
+  Template,
+  TemplateGroup,
+} from './types';
 
 /**
  * On-device database (IndexedDB). Following XBoard's principle,
@@ -10,10 +19,24 @@ export const db = new Dexie('x-manager') as Dexie & {
   groups: EntityTable<Group, 'id'>;
   proxyGroups: EntityTable<ProxyGroup, 'id'>;
   accounts: EntityTable<Account, 'id'>;
+  templateGroups: EntityTable<TemplateGroup, 'id'>;
+  templates: EntityTable<Template, 'id'>;
+  randomWordSets: EntityTable<RandomWordSet, 'no'>;
+  postJobs: EntityTable<PostJob, 'id'>;
+  reservations: EntityTable<Reservation, 'id'>;
 };
 
 db.version(1).stores({
   groups: 'id, order',
   proxyGroups: 'id, name',
   accounts: 'id, handle, groupId, proxyGroupId, status',
+});
+
+/* M2: bulk-post tables (templates, word lists, job log, reservations). */
+db.version(2).stores({
+  templateGroups: 'id, order',
+  templates: 'id, no, groupId',
+  randomWordSets: 'no',
+  postJobs: 'id, createdAt, status',
+  reservations: 'id, scheduledAt, status',
 });

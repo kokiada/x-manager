@@ -3,8 +3,10 @@ import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AppShell, SECTIONS } from './components/AppShell';
 import { ToastProvider } from './components/ui';
 import { seedIfEmpty } from './db/seed';
+import { useReservationScheduler } from './hooks/useReservationScheduler';
 import { AccountDetail } from './pages/AccountDetail';
 import { Accounts } from './pages/Accounts';
+import { BulkPost } from './pages/BulkPost';
 import { Dashboard } from './pages/Dashboard';
 import { Placeholder } from './pages/Placeholder';
 
@@ -19,6 +21,9 @@ export default function App() {
       .finally(() => setReady(true));
   }, []);
 
+  // Fire due bulk-post reservations while the app is open (M2).
+  useReservationScheduler();
+
   return (
     <ToastProvider>
       <HashRouter>
@@ -30,6 +35,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/accounts/:id" element={<AccountDetail />} />
+              <Route path="/bulk-post" element={<BulkPost />} />
               {SECTIONS.filter((s) => !s.ready && s.no !== '03').map((s) => (
                 <Route key={s.no} path={s.path} element={<Placeholder section={s} />} />
               ))}

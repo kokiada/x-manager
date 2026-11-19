@@ -5,6 +5,7 @@ import type {
   ActionTarget,
   AccountCheckResult,
   BulkActionKind,
+  DeletePostResult,
   Executor,
   PostContent,
   PostResult,
@@ -41,13 +42,32 @@ export class SimulatorExecutor implements Executor {
       return { accountId: account.id, ok: false, error: '本文が空です', at };
     }
     const postId = `${at}${Math.floor(Math.random() * 1000)}`;
+    const threadPostIds = (content.threadTexts ?? []).map(
+      (_, i) => `${postId}t${i + 1}`,
+    );
     return {
       accountId: account.id,
       ok: true,
       postId,
       postUrl: `https://x.com/${account.handle}/status/${postId}`,
+      threadPostIds: threadPostIds.length > 0 ? threadPostIds : undefined,
       at,
     };
+  }
+
+  async deletePost(account: Account, postId: string): Promise<DeletePostResult> {
+    await delay(300, 800);
+    const at = Date.now();
+    if (account.status !== 'logged_in') {
+      return {
+        accountId: account.id,
+        postId,
+        ok: false,
+        error: `アカウントがログイン状態ではありません（${account.status}）`,
+        at,
+      };
+    }
+    return { accountId: account.id, postId, ok: true, at };
   }
 
   async executeAction(

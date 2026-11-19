@@ -17,7 +17,7 @@ export const SECTIONS: Section[] = [
   { no: '01', path: '/', label: 'ダッシュボード', glyph: '▦', milestone: 'M1', ready: true, description: 'アカウント状態サマリと要対応アラート' },
   { no: '02', path: '/accounts', label: 'アカウント', glyph: '𝕏', milestone: 'M1', ready: true, description: 'アカウント台帳・グループ・プロキシ割当' },
   { no: '03', path: '/accounts', label: 'アカウント詳細', glyph: '▤', milestone: 'M1', ready: true, description: 'アカウント行から開く詳細ビュー' },
-  { no: '04', path: '/bulk-post', label: '一括投稿', glyph: '✎', milestone: 'M2', ready: false, description: 'テンプレート・ランダム文言・ツリー・予約投稿' },
+  { no: '04', path: '/bulk-post', label: '一括投稿', glyph: '✎', milestone: 'M2', ready: true, description: 'テンプレート・ランダム文言・ツリー・予約投稿' },
   { no: '05', path: '/bulk-action', label: '一括操作', glyph: '♥', milestone: 'M4', ready: false, description: 'いいね・リポスト・ブックマークの一括実行と自動操作' },
   { no: '06', path: '/ban-check', label: 'バンチェック', glyph: '◎', milestone: 'M3', ready: false, description: 'サーチバン／リプライバンのチェックと定期実行' },
   { no: '07', path: '/analytics', label: '分析', glyph: '↗', milestone: 'M4', ready: false, description: 'ポスト分析・ポスト追跡・フォロワー推移' },
