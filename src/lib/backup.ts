@@ -1,8 +1,19 @@
 import type {
   Account,
   AppSettings,
+  AutoActionEvent,
+  AutoActionRule,
+  AutoPostRule,
+  AutoPostRun,
+  BanCheckResult,
+  BulkAction,
+  FollowerHistory,
   Group,
+  MetaRow,
+  NotificationItem,
+  PostAnalytics,
   PostJob,
+  PostTracking,
   ProxyGroup,
   RandomWordSet,
   Reservation,
@@ -43,6 +54,23 @@ export interface BackupTables {
   reservations: Reservation[];
   /** App settings (full backups only). */
   settings: AppSettings | null;
+  /**
+   * M3/M4 tables. Optional so backups written before they existed
+   * (BACKUP_VERSION 1 payloads without these keys) still restore —
+   * validateBackupPayload fills missing ones with [].
+   */
+  banCheckResults?: BanCheckResult[];
+  bulkActions?: BulkAction[];
+  autoActionRules?: AutoActionRule[];
+  autoActionEvents?: AutoActionEvent[];
+  postAnalytics?: PostAnalytics[];
+  postTracking?: PostTracking[];
+  followerHistory?: FollowerHistory[];
+  notifications?: NotificationItem[];
+  autoPostRules?: AutoPostRule[];
+  autoPostRuns?: AutoPostRun[];
+  /** Scheduler state (last-run dates, fired slots, daily counts). */
+  meta?: MetaRow[];
 }
 
 export interface BackupPayload {
@@ -175,6 +203,21 @@ const TABLE_KEYS = [
   'reservations',
 ] as const;
 
+/** M3/M4 tables, added after the first backup format shipped. */
+const NEW_TABLE_KEYS = [
+  'banCheckResults',
+  'bulkActions',
+  'autoActionRules',
+  'autoActionEvents',
+  'postAnalytics',
+  'postTracking',
+  'followerHistory',
+  'notifications',
+  'autoPostRules',
+  'autoPostRuns',
+  'meta',
+] as const;
+
 /** Structural check of a decrypted payload before it touches the DB. */
 export function validateBackupPayload(value: unknown): BackupPayload {
   const p = value as BackupPayload;
@@ -186,6 +229,16 @@ export function validateBackupPayload(value: unknown): BackupPayload {
   }
   for (const key of TABLE_KEYS) {
     if (!Array.isArray(p.tables[key])) {
+      throw new Error(`バックアップのテーブル「${key}」が壊れています`);
+    }
+  }
+  // M3/M4 tables are optional: old backups predate them, so a
+  // missing key is normalized to [] instead of rejected.
+  for (const key of NEW_TABLE_KEYS) {
+    const rows = p.tables[key];
+    if (rows === undefined) {
+      (p.tables as unknown as Record<string, unknown>)[key] = [];
+    } else if (!Array.isArray(rows)) {
       throw new Error(`バックアップのテーブル「${key}」が壊れています`);
     }
   }
@@ -203,29 +256,52 @@ export function emptyTables(): BackupTables {
     postJobs: [],
     reservations: [],
     settings: null,
+    banCheckResults: [],
+    bulkActions: [],
+    autoActionRules: [],
+    autoActionEvents: [],
+    postAnalytics: [],
+    postTracking: [],
+    followerHistory: [],
+    notifications: [],
+    autoPostRules: [],
+    autoPostRuns: [],
+    meta: [],
   };
 }
 
 /**
  * Build the group-selective subset (research §15-2): the selected
- * group, its accounts, and the proxy groups those accounts use.
- * Templates / rules / settings are not part of a group backup.
+ * group, its accounts, the proxy groups those accounts use, and the
+ * account-scoped rows (ban-check verdicts, follower history,
+ * notifications, analytics, tracking) of those accounts.
+ * Templates / rules / jobs / settings are not part of a group backup.
  */
 export function buildGroupSubset(tables: BackupTables, groupId: string): BackupTables {
   const group = tables.groups.find((g) => g.id === groupId);
   const accounts = tables.accounts.filter((a) => a.groupId === groupId);
   const usedProxyIds = new Set(accounts.map((a) => a.proxyGroupId).filter(Boolean));
+  const accountIds = new Set(accounts.map((a) => a.id));
+  const byAccount = <T extends { accountId: string }>(rows?: T[]): T[] =>
+    (rows ?? []).filter((r) => accountIds.has(r.accountId));
   return {
     ...emptyTables(),
     groups: group ? [group] : [],
     proxyGroups: tables.proxyGroups.filter((p) => usedProxyIds.has(p.id)),
     accounts,
+    banCheckResults: byAccount(tables.banCheckResults),
+    followerHistory: byAccount(tables.followerHistory),
+    notifications: byAccount(tables.notifications),
+    postAnalytics: byAccount(tables.postAnalytics),
+    postTracking: byAccount(tables.postTracking),
   };
 }
 
 /** Row counts per table, for the restore confirmation UI. */
 export function backupCounts(payload: BackupPayload): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const key of TABLE_KEYS) counts[key] = payload.tables[key].length;
+  for (const key of [...TABLE_KEYS, ...NEW_TABLE_KEYS]) {
+    counts[key] = (payload.tables[key] ?? []).length;
+  }
   return counts;
 }

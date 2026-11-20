@@ -98,6 +98,42 @@ describe('validateBackupPayload', () => {
     (broken.tables as unknown as Record<string, unknown>).accounts = 'nope';
     expect(() => validateBackupPayload(broken)).toThrow(/壊れています/);
   });
+
+  it('normalizes pre-M3/M4 payloads that lack the new tables', () => {
+    const old = samplePayload();
+    const tables = old.tables as unknown as Record<string, unknown>;
+    for (const key of [
+      'banCheckResults', 'bulkActions', 'autoActionRules', 'autoActionEvents',
+      'postAnalytics', 'postTracking', 'followerHistory', 'notifications',
+      'autoPostRules', 'autoPostRuns', 'meta',
+    ]) {
+      delete tables[key];
+    }
+    const restored = validateBackupPayload(old);
+    expect(restored.tables.banCheckResults).toEqual([]);
+    expect(restored.tables.followerHistory).toEqual([]);
+    expect(restored.tables.meta).toEqual([]);
+  });
+
+  it('rejects a broken new table', () => {
+    const broken = samplePayload();
+    (broken.tables as unknown as Record<string, unknown>).followerHistory = 'nope';
+    expect(() => validateBackupPayload(broken)).toThrow(/壊れています/);
+  });
+
+  it('round-trips a payload carrying the new tables', async () => {
+    const payload = samplePayload();
+    payload.tables.banCheckResults = [
+      { id: 'bc-1', accountId: 'acc-1', handle: 'sample_handle', checkedByAccountId: 'acc-1', topicVisible: true, latestVisible: true, checkedAt: 2 },
+    ];
+    payload.tables.followerHistory = [{ id: 'fh-1', accountId: 'acc-1', date: '2026-11-20', followers: 10 }];
+    payload.tables.autoPostRules = [
+      { id: 'apr-1', name: '朝ポスト', enabled: true, accountIds: ['acc-1'], templateId: 'tpl-1', mode: 'fixed_times', times: ['09:00'], createdAt: 1, updatedAt: 1 },
+    ];
+    const text = await encryptBackup(payload, PASSWORD);
+    const restored = await decryptBackup(text, PASSWORD);
+    expect(restored).toEqual(payload);
+  });
 });
 
 describe('buildGroupSubset', () => {
@@ -125,5 +161,30 @@ describe('buildGroupSubset', () => {
     expect(subset.proxyGroups.map((p) => p.id)).toEqual(['px-1']);
     expect(subset.templates).toEqual([]);
     expect(subset.settings).toBeNull();
+  });
+
+  it('carries account-scoped rows of the group accounts only', () => {
+    const tables: BackupTables = {
+      ...emptyTables(),
+      groups: [{ id: 'grp-1', name: 'メイン', order: 0, createdAt: 1 }] as Group[],
+      accounts: [
+        { id: 'a1', groupId: 'grp-1' },
+        { id: 'a2', groupId: 'grp-2' },
+      ] as unknown as Account[],
+      followerHistory: [
+        { id: 'fh-1', accountId: 'a1', date: '2026-11-20', followers: 5 },
+        { id: 'fh-2', accountId: 'a2', date: '2026-11-20', followers: 7 },
+      ],
+      notifications: [
+        { id: 'n-1', accountId: 'a1', handle: 'sample_handle', kind: 'dm', title: 'DM', body: 'x', at: 1, read: false },
+        { id: 'n-2', accountId: 'a2', handle: 'other_handle', kind: 'dm', title: 'DM', body: 'y', at: 1, read: false },
+      ],
+      autoPostRules: [{ id: 'r-1' }] as unknown as BackupTables['autoPostRules'],
+    };
+    const subset = buildGroupSubset(tables, 'grp-1');
+    expect(subset.followerHistory?.map((r) => r.id)).toEqual(['fh-1']);
+    expect(subset.notifications?.map((r) => r.id)).toEqual(['n-1']);
+    // Rules are not group-scoped and never travel in a group backup.
+    expect(subset.autoPostRules).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import type { EntityTable } from 'dexie';
 import { db } from './db';
 import type {
   Account,
@@ -395,21 +396,62 @@ const ALL_TABLES = [
   db.postJobs,
   db.reservations,
   db.settings,
+  db.banCheckResults,
+  db.bulkActions,
+  db.autoActionRules,
+  db.autoActionEvents,
+  db.postAnalytics,
+  db.postTracking,
+  db.followerHistory,
+  db.notifications,
+  db.autoPostRules,
+  db.autoPostRuns,
+  db.meta,
 ] as const;
 
 /** Snapshot every table (plus settings) for a full backup. */
 export async function exportAllTables(): Promise<BackupTables> {
-  const [groups, proxyGroups, accounts, templateGroups, templates, randomWordSets, postJobs, reservations] =
-    await Promise.all([
-      db.groups.toArray(),
-      db.proxyGroups.toArray(),
-      db.accounts.toArray(),
-      db.templateGroups.toArray(),
-      db.templates.toArray(),
-      db.randomWordSets.toArray(),
-      db.postJobs.toArray(),
-      db.reservations.toArray(),
-    ]);
+  const [
+    groups,
+    proxyGroups,
+    accounts,
+    templateGroups,
+    templates,
+    randomWordSets,
+    postJobs,
+    reservations,
+    banCheckResults,
+    bulkActions,
+    autoActionRules,
+    autoActionEvents,
+    postAnalytics,
+    postTracking,
+    followerHistory,
+    notifications,
+    autoPostRules,
+    autoPostRuns,
+    meta,
+  ] = await Promise.all([
+    db.groups.toArray(),
+    db.proxyGroups.toArray(),
+    db.accounts.toArray(),
+    db.templateGroups.toArray(),
+    db.templates.toArray(),
+    db.randomWordSets.toArray(),
+    db.postJobs.toArray(),
+    db.reservations.toArray(),
+    db.banCheckResults.toArray(),
+    db.bulkActions.toArray(),
+    db.autoActionRules.toArray(),
+    db.autoActionEvents.toArray(),
+    db.postAnalytics.toArray(),
+    db.postTracking.toArray(),
+    db.followerHistory.toArray(),
+    db.notifications.toArray(),
+    db.autoPostRules.toArray(),
+    db.autoPostRuns.toArray(),
+    db.meta.toArray(),
+  ]);
   const settingsRow = await db.settings.get('app');
   return {
     groups,
@@ -421,6 +463,17 @@ export async function exportAllTables(): Promise<BackupTables> {
     postJobs,
     reservations,
     settings: settingsRow?.settings ?? null,
+    banCheckResults,
+    bulkActions,
+    autoActionRules,
+    autoActionEvents,
+    postAnalytics,
+    postTracking,
+    followerHistory,
+    notifications,
+    autoPostRules,
+    autoPostRuns,
+    meta,
   };
 }
 
@@ -431,6 +484,7 @@ export async function exportAllTables(): Promise<BackupTables> {
 export async function replaceAllTables(tables: BackupTables): Promise<void> {
   await db.transaction('rw', ALL_TABLES, async () => {
     for (const table of ALL_TABLES) await table.clear();
+    // `?? []` covers backups written before the M3/M4 tables existed.
     if (tables.groups.length) await db.groups.bulkAdd(tables.groups);
     if (tables.proxyGroups.length) await db.proxyGroups.bulkAdd(tables.proxyGroups);
     if (tables.accounts.length) await db.accounts.bulkAdd(tables.accounts);
@@ -440,6 +494,17 @@ export async function replaceAllTables(tables: BackupTables): Promise<void> {
     if (tables.postJobs.length) await db.postJobs.bulkAdd(tables.postJobs);
     if (tables.reservations.length) await db.reservations.bulkAdd(tables.reservations);
     if (tables.settings) await db.settings.put({ key: 'app', settings: tables.settings });
+    if ((tables.banCheckResults ?? []).length) await db.banCheckResults.bulkAdd(tables.banCheckResults!);
+    if ((tables.bulkActions ?? []).length) await db.bulkActions.bulkAdd(tables.bulkActions!);
+    if ((tables.autoActionRules ?? []).length) await db.autoActionRules.bulkAdd(tables.autoActionRules!);
+    if ((tables.autoActionEvents ?? []).length) await db.autoActionEvents.bulkAdd(tables.autoActionEvents!);
+    if ((tables.postAnalytics ?? []).length) await db.postAnalytics.bulkAdd(tables.postAnalytics!);
+    if ((tables.postTracking ?? []).length) await db.postTracking.bulkAdd(tables.postTracking!);
+    if ((tables.followerHistory ?? []).length) await db.followerHistory.bulkAdd(tables.followerHistory!);
+    if ((tables.notifications ?? []).length) await db.notifications.bulkAdd(tables.notifications!);
+    if ((tables.autoPostRules ?? []).length) await db.autoPostRules.bulkAdd(tables.autoPostRules!);
+    if ((tables.autoPostRuns ?? []).length) await db.autoPostRuns.bulkAdd(tables.autoPostRuns!);
+    if ((tables.meta ?? []).length) await db.meta.bulkAdd(tables.meta!);
   });
 }
 
@@ -448,6 +513,12 @@ export interface MergeResult {
   addedProxyGroups: number;
   addedAccounts: number;
   skippedAccounts: number;
+  /** Account-scoped rows merged alongside the group's accounts. */
+  addedBanCheckResults: number;
+  addedFollowerHistory: number;
+  addedNotifications: number;
+  addedPostAnalytics: number;
+  addedPostTracking: number;
 }
 
 /**
@@ -456,7 +527,20 @@ export interface MergeResult {
  * nothing is ever deleted.
  */
 export async function mergeGroupTables(subset: BackupTables): Promise<MergeResult> {
-  const result: MergeResult = { addedGroups: 0, addedProxyGroups: 0, addedAccounts: 0, skippedAccounts: 0 };
+  const result: MergeResult = {
+    addedGroups: 0,
+    addedProxyGroups: 0,
+    addedAccounts: 0,
+    skippedAccounts: 0,
+    addedBanCheckResults: 0,
+    addedFollowerHistory: 0,
+    addedNotifications: 0,
+    addedPostAnalytics: 0,
+    addedPostTracking: 0,
+  };
+  // Dexie's typed transaction() caps its table arguments, so the
+  // merge runs as two transactions: core rows first, then the
+  // account-scoped rows that travel with them.
   await db.transaction('rw', db.groups, db.proxyGroups, db.accounts, async () => {
     for (const group of subset.groups) {
       if (await db.groups.get(group.id)) continue;
@@ -477,6 +561,39 @@ export async function mergeGroupTables(subset: BackupTables): Promise<MergeResul
       result.addedAccounts++;
     }
   });
+  const mergeRows = async <T extends { id: string }>(
+    table: EntityTable<T, 'id'>,
+    rows: T[] | undefined,
+    counter: keyof MergeResult,
+  ) => {
+    // Dexie's typed get()/add() do not resolve against a generic
+    // row type, so both calls go through a minimal structural type
+    // (the rows themselves stay typed T).
+    const ops = table as unknown as {
+      get: (id: string) => Promise<T | undefined>;
+      add: (row: T) => Promise<unknown>;
+    };
+    for (const row of rows ?? []) {
+      if (await ops.get(row.id)) continue;
+      await ops.add(row);
+      (result[counter] as number)++;
+    }
+  };
+  await db.transaction(
+    'rw',
+    db.banCheckResults,
+    db.followerHistory,
+    db.notifications,
+    db.postAnalytics,
+    db.postTracking,
+    async () => {
+      await mergeRows(db.banCheckResults, subset.banCheckResults, 'addedBanCheckResults');
+      await mergeRows(db.followerHistory, subset.followerHistory, 'addedFollowerHistory');
+      await mergeRows(db.notifications, subset.notifications, 'addedNotifications');
+      await mergeRows(db.postAnalytics, subset.postAnalytics, 'addedPostAnalytics');
+      await mergeRows(db.postTracking, subset.postTracking, 'addedPostTracking');
+    },
+  );
   return result;
 }
 
