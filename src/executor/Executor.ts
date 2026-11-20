@@ -94,6 +94,29 @@ export interface SearchBanCheckResult {
   checkedAt: number;
 }
 
+/** One post row returned by a post-analytics fetch (research §12-1). */
+export interface PostAnalyticsItem {
+  accountId: string;
+  postId: string;
+  postUrl: string;
+  text: string;
+  likes: number;
+  reposts: number;
+  bookmarks: number;
+  views: number;
+  postedAt: number;
+  fetchedAt: number;
+}
+
+/** One notification / DM item (research §11). */
+export interface NotificationItem {
+  kind: 'notification' | 'dm';
+  title: string;
+  body: string;
+  fromHandle?: string;
+  at: number;
+}
+
 export interface Executor {
   /** Post one (possibly threaded) post as the account. */
   executePost(account: Account, content: PostContent): Promise<PostResult>;
@@ -116,4 +139,21 @@ export interface Executor {
    * `viaAccount` (must be logged in and not locked/frozen).
    */
   checkSearchBan(account: Account, viaAccount: Account): Promise<SearchBanCheckResult>;
+  /**
+   * Fetch the account's recent posts with engagement metrics for post
+   * analytics (research §12-1). `fetcherAccounts` are the accounts
+   * used to fetch (up to 3; see lib/analytics for the count rules).
+   */
+  fetchPostAnalytics(
+    account: Account,
+    fetcherAccounts: Account[],
+  ): Promise<PostAnalyticsItem[]>;
+  /**
+   * Fetch the account's recent notifications and DMs (research §11).
+   * Only counts are documented by the manual; a real executor would
+   * fetch the actual items — the simulator generates plausible demo
+   * items from the account's current counts (labelled as demo in the
+   * simulator's comments).
+   */
+  fetchNotifications(account: Account): Promise<NotificationItem[]>;
 }

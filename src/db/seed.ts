@@ -180,4 +180,65 @@ export async function seedIfEmpty(): Promise<void> {
     await db.templates.bulkAdd(SEED_TEMPLATES);
     await db.randomWordSets.bulkAdd(SEED_RANDOM_WORD_SETS);
   });
+  await seedFollowerHistoryIfEmpty();
+}
+
+/* --------------------- follower history seed (M4, §12-3) --------------------- */
+
+/** Deterministic PRNG so the seeded trend looks the same on every fresh install. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Seed ~60 days of plausible follower history per account (only when
+ * the table is empty). A random walk backwards from today's count,
+ * with a few gaps left out so the chart's dashed-gap rendering has
+ * something to show.
+ */
+export async function seedFollowerHistoryIfEmpty(): Promise<void> {
+  if ((await db.followerHistory.count()) > 0) return;
+  const dayMs = 24 * 3600_000;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const pad = (v: number) => String(v).padStart(2, '0');
+  const rows: { id: string; accountId: string; date: string; followers: number }[] = [];
+  for (const account of SEED_ACCOUNTS) {
+    const rng = mulberry32(hashSeed(account.id));
+    let followers = account.followers;
+    for (let back = 0; back < 60; back++) {
+      const d = new Date(today.getTime() - back * dayMs);
+      const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      // Occasionally skip a day (app was closed) — the chart renders
+      // the gap as a dashed segment (§12-3).
+      if (back > 0 && rng() < 0.06) continue;
+      if (back > 0) {
+        // Walk backwards: older counts are a little lower on average.
+        followers = Math.max(0, Math.round(followers * (1 - (rng() - 0.42) * 0.02)));
+      }
+      rows.push({
+        id: `fh-seed-${account.id}-${date}`,
+        accountId: account.id,
+        date,
+        followers,
+      });
+    }
+  }
+  await db.followerHistory.bulkAdd(rows);
 }

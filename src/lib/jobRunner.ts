@@ -55,6 +55,8 @@ export interface RunBulkPostInput {
   accounts: readonly Account[];
   payload: ComposePayload;
   intervalSec: number;
+  /** Extra random gap (seconds) added per interval, 0–intervalJitterSec. */
+  intervalJitterSec?: number;
   wordSets: RandomWordSets;
   signal: AbortSignal;
   deps: JobRunnerDeps;
@@ -114,9 +116,14 @@ export async function runBulkPostJob(input: RunBulkPostInput): Promise<PostJobEn
       await emit();
     }
 
-    // Interval between accounts (never after the last one).
+    // Interval between accounts (never after the last one). With
+    // intervalJitterSec, each gap is intervalSec + 0..jitter seconds
+    // (auto-post §6-6: 60 s + 0–30 s between accounts). The rng is
+    // only drawn when jitter is configured, so the no-jitter path
+    // behaves exactly as before.
     if (i < accounts.length - 1 && !signal.aborted) {
-      await deps.wait(intervalSec * 1000, signal);
+      const jitter = input.intervalJitterSec ? rng() * input.intervalJitterSec : 0;
+      await deps.wait((intervalSec + jitter) * 1000, signal);
     }
   }
 

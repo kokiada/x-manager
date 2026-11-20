@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import { HashRouter, Route, Routes } from 'react-router-dom';
-import { AppShell, SECTIONS } from './components/AppShell';
+import { AppShell } from './components/AppShell';
 import { ToastProvider } from './components/ui';
 import { seedIfEmpty } from './db/seed';
 import { useReservationScheduler } from './hooks/useReservationScheduler';
+import { useScheduledEngines } from './hooks/useScheduledEngines';
 import { AccountDetail } from './pages/AccountDetail';
 import { Accounts } from './pages/Accounts';
+import { Analytics } from './pages/Analytics';
+import { BanCheck } from './pages/BanCheck';
+import { BulkAction } from './pages/BulkAction';
 import { BulkPost } from './pages/BulkPost';
 import { Dashboard } from './pages/Dashboard';
 import { DataManagement } from './pages/DataManagement';
-import { Placeholder } from './pages/Placeholder';
+import { Inbox } from './pages/Inbox';
 import { Settings } from './pages/Settings';
 
 export default function App() {
@@ -25,6 +29,8 @@ export default function App() {
 
   // Fire due bulk-post reservations while the app is open (M2).
   useReservationScheduler();
+  // Scheduled checks, auto-post and auto-action engines (M3/M4).
+  useScheduledEngines();
 
   return (
     <ToastProvider>
@@ -38,11 +44,12 @@ export default function App() {
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/accounts/:id" element={<AccountDetail />} />
               <Route path="/bulk-post" element={<BulkPost />} />
+              <Route path="/bulk-action" element={<BulkAction />} />
+              <Route path="/ban-check" element={<BanCheck />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/inbox" element={<Inbox />} />
               <Route path="/data" element={<DataManagement />} />
               <Route path="/settings" element={<Settings />} />
-              {SECTIONS.filter((s) => !s.ready && s.no !== '03').map((s) => (
-                <Route key={s.no} path={s.path} element={<Placeholder section={s} />} />
-              ))}
             </Routes>
           )}
         </AppShell>

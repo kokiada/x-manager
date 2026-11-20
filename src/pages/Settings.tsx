@@ -213,7 +213,8 @@ export function Settings() {
         onChange={(searchBanCheck) => setForm({ ...form, searchBanCheck })}
       />
       <p className="dim" style={{ fontSize: 12 }}>
-        ここでは設定の保存のみを行います。定期実行エンジン本体はチェック系の実装（M3）で接続されます。
+        定期チェックはアプリを開いている間に実行されます。開始時刻を15分以上過ぎた回は見送ります。
+        実行状況はバンチェック画面の履歴でも確認できます。
       </p>
 
       <div className="toolbar">

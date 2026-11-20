@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db/db';
 import type { Account, NewAccount } from '../db/types';
-import { createAccount, updateAccount } from '../db/repository';
+import { createAccount, recordFollowerHistory, updateAccount } from '../db/repository';
 import { executor } from '../executor';
 import { accountsToCsv } from '../lib/accountCsv';
 import { downloadTextFile } from '../lib/csv';
@@ -55,6 +55,7 @@ export function Accounts() {
     setCheckingId(account.id);
     try {
       const result = await executor.checkAccount(account);
+      await recordFollowerHistory(account.id, result.followers);
       toast.push(
         `@${account.handle} をチェックしました（フォロワー ${result.followers.toLocaleString('ja-JP')}）`,
         'ok',
@@ -72,7 +73,8 @@ export function Accounts() {
     for (const account of targets) {
       setBulkProgress(`チェック中 ${done + 1}/${targets.length}: @${account.handle}`);
       try {
-        await executor.checkAccount(account);
+        const result = await executor.checkAccount(account);
+        await recordFollowerHistory(account.id, result.followers);
       } catch {
         /* continue with the next account, as XBoard does */
       }

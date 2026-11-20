@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { db } from '../db/db';
 import type { NewAccount } from '../db/types';
 import { SEARCH_BAN_LABELS } from '../db/types';
-import { deleteAccount, updateAccount } from '../db/repository';
+import { deleteAccount, recordFollowerHistory, updateAccount } from '../db/repository';
+import { runSingleBanCheck } from '../lib/banCheckService';
 import { executor } from '../executor';
 import { checkedAtLabel, fullCount, maskToken } from '../lib/format';
 import { AccountForm } from '../components/AccountForm';
@@ -43,7 +44,8 @@ export function AccountDetail() {
   const runCheck = async () => {
     setBusy('check');
     try {
-      await executor.checkAccount(account);
+      const result = await executor.checkAccount(account);
+      await recordFollowerHistory(account.id, result.followers);
       toast.push(`@${account.handle} のチェックが完了しました`, 'ok');
     } catch {
       toast.push('チェックに失敗しました', 'err');
@@ -53,20 +55,17 @@ export function AccountDetail() {
   };
 
   const runBanCheck = async () => {
-    const all = await db.accounts.toArray();
-    const via = all.find((a) => a.id !== account.id && a.status === 'logged_in');
-    if (!via) {
-      toast.push('チェックに使えるログイン済みアカウントが他にありません', 'err');
-      return;
-    }
     setBusy('ban');
     try {
-      const result = await executor.checkSearchBan(account, via);
-      if (result.topicVisible === null) {
+      const result = await runSingleBanCheck(account.id);
+      if (!result) {
+        toast.push('チェックに使えるログイン済みアカウントが他にありません', 'err');
+      } else if (result.topicVisible === null) {
         toast.push('サーチバンチェックの取得に失敗しました（⚠）', 'err');
       } else {
+        const via = await db.accounts.get(result.checkedByAccountId);
         toast.push(
-          `サーチバン判定: 話題 ${result.topicVisible ? '○' : '✗'} / 最新 ${result.latestVisible ? '○' : '✗'}（確認: @${via.handle}）`,
+          `サーチバン判定: 話題 ${result.topicVisible ? '○' : '✗'} / 最新 ${result.latestVisible ? '○' : '✗'}（確認: @${via?.handle ?? '—'}）`,
           result.topicVisible && result.latestVisible ? 'ok' : 'info',
         );
       }

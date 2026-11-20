@@ -15,6 +15,7 @@ import { createAndRunJob } from '../lib/bulkPostService';
 import { buildPostContent, validateCompose, weightedLength, POST_CHAR_LIMIT } from '../lib/bulkPost';
 import { expandRandomText, findRandomPlaceholders, type RandomWordSets } from '../lib/randomText';
 import { AccountOrderPicker } from '../components/bulk/AccountOrderPicker';
+import { AutoPostManager } from '../components/bulk/AutoPostManager';
 import { JobCard, JobHistory } from '../components/bulk/JobHistory';
 import { MediaPicker, type SelectedMedia } from '../components/bulk/MediaPicker';
 import { PollEditor } from '../components/bulk/PollEditor';
@@ -22,7 +23,7 @@ import { RandomWordsManager } from '../components/bulk/RandomWordsManager';
 import { TemplateManager } from '../components/bulk/TemplateManager';
 import { Button, useToast } from '../components/ui';
 
-type View = 'compose' | 'templates' | 'history';
+type View = 'compose' | 'templates' | 'history' | 'autopost';
 
 function toLocalInputValue(d: Date): string {
   const pad = (v: number) => String(v).padStart(2, '0');
@@ -196,7 +197,12 @@ export function BulkPost() {
         <button type="button" role="tab" aria-selected={view === 'history'} className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>
           予約・履歴
         </button>
+        <button type="button" role="tab" aria-selected={view === 'autopost'} className={view === 'autopost' ? 'active' : ''} onClick={() => setView('autopost')}>
+          自動投稿
+        </button>
       </div>
+
+      {view === 'autopost' && <AutoPostManager />}
 
       {view === 'templates' && (
         <div>

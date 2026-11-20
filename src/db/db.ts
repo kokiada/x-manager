@@ -1,8 +1,19 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   Account,
+  AutoActionEvent,
+  AutoActionRule,
+  AutoPostRule,
+  AutoPostRun,
+  BanCheckResult,
+  BulkAction,
+  FollowerHistory,
   Group,
+  MetaRow,
+  NotificationItem,
+  PostAnalytics,
   PostJob,
+  PostTracking,
   ProxyGroup,
   RandomWordSet,
   Reservation,
@@ -26,6 +37,17 @@ export const db = new Dexie('x-manager') as Dexie & {
   postJobs: EntityTable<PostJob, 'id'>;
   reservations: EntityTable<Reservation, 'id'>;
   settings: EntityTable<SettingsRow, 'key'>;
+  banCheckResults: EntityTable<BanCheckResult, 'id'>;
+  bulkActions: EntityTable<BulkAction, 'id'>;
+  autoActionRules: EntityTable<AutoActionRule, 'id'>;
+  autoActionEvents: EntityTable<AutoActionEvent, 'id'>;
+  postAnalytics: EntityTable<PostAnalytics, 'id'>;
+  postTracking: EntityTable<PostTracking, 'id'>;
+  followerHistory: EntityTable<FollowerHistory, 'id'>;
+  notifications: EntityTable<NotificationItem, 'id'>;
+  autoPostRules: EntityTable<AutoPostRule, 'id'>;
+  autoPostRuns: EntityTable<AutoPostRun, 'id'>;
+  meta: EntityTable<MetaRow, 'key'>;
 };
 
 db.version(1).stores({
@@ -46,4 +68,19 @@ db.version(2).stores({
 /* M5: app settings (plan, browser keep-alive, check schedules). */
 db.version(3).stores({
   settings: 'key',
+});
+
+/* M3/M4: ban-check history, bulk/auto actions, analytics, inbox, auto-post, meta. */
+db.version(4).stores({
+  banCheckResults: 'id, accountId, checkedAt',
+  bulkActions: 'id, createdAt, status',
+  autoActionRules: 'id, createdAt',
+  autoActionEvents: 'id, ruleId, at',
+  postAnalytics: 'id, accountId, fetchedAt',
+  postTracking: 'id, accountId, groupId, createdAt',
+  followerHistory: 'id, accountId, date',
+  notifications: 'id, accountId, at, read',
+  autoPostRules: 'id, createdAt',
+  autoPostRuns: 'id, ruleId, at',
+  meta: 'key',
 });

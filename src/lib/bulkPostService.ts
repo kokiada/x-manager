@@ -45,6 +45,8 @@ export interface RunJobRequest {
   accountIds: readonly string[];
   payload: ComposePayload;
   intervalSec: number;
+  /** Extra random gap (seconds) added per interval, 0–intervalJitterSec. */
+  intervalJitterSec?: number;
   kind: 'immediate' | 'reservation';
   reservationId?: string;
 }
@@ -85,6 +87,7 @@ export async function createAndRunJob(req: RunJobRequest): Promise<PostJob> {
       accounts,
       payload: req.payload,
       intervalSec: req.intervalSec,
+      intervalJitterSec: req.intervalJitterSec,
       wordSets,
       signal: controller.signal,
       initialEntries: job.entries,

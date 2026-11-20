@@ -2,10 +2,20 @@ import { db } from './db';
 import type {
   Account,
   AppSettings,
+  AutoActionEvent,
+  AutoActionRule,
+  AutoPostRule,
+  AutoPostRun,
+  BanCheckResult,
+  BulkAction,
+  FollowerHistory,
   Group,
   NewAccount,
   NewTemplate,
+  NotificationItem,
+  PostAnalytics,
   PostJob,
+  PostTracking,
   ProxyGroup,
   RandomWordSet,
   Reservation,
@@ -468,4 +478,320 @@ export async function mergeGroupTables(subset: BackupTables): Promise<MergeResul
     }
   });
   return result;
+}
+
+/* ================= M3/M4: ban checks, bulk actions, analytics, inbox ================ */
+
+/** Local 'YYYY-MM-DD' for a timestamp (device timezone). */
+export function localDateString(ts: number): string {
+  const d = new Date(ts);
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/* ------------------------------- meta -------------------------------- */
+
+export async function getMeta<T>(key: string, fallback: T): Promise<T> {
+  const row = await db.meta.get(key);
+  if (!row) return fallback;
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function setMeta(key: string, value: unknown): Promise<void> {
+  await db.meta.put({ key, value: JSON.stringify(value) });
+}
+
+/* ---------------------------- ban checks ----------------------------- */
+
+export async function recordBanCheckResult(
+  input: Omit<BanCheckResult, 'id'>,
+): Promise<BanCheckResult> {
+  const row: BanCheckResult = { ...input, id: uid() };
+  await db.banCheckResults.add(row);
+  return row;
+}
+
+export async function listBanCheckResults(limit = 50): Promise<BanCheckResult[]> {
+  const all = await db.banCheckResults.toArray();
+  return all.sort((a, b) => b.checkedAt - a.checkedAt).slice(0, limit);
+}
+
+/** Latest ban-check verdict for an account, or undefined when never checked. */
+export async function latestBanCheckFor(accountId: string): Promise<BanCheckResult | undefined> {
+  const rows = await db.banCheckResults.where('accountId').equals(accountId).toArray();
+  return rows.sort((a, b) => b.checkedAt - a.checkedAt)[0];
+}
+
+/* ---------------------------- bulk actions --------------------------- */
+
+export async function createBulkAction(
+  input: Omit<BulkAction, 'id' | 'createdAt' | 'status' | 'entries'>,
+): Promise<BulkAction> {
+  const job: BulkAction = {
+    ...input,
+    id: uid(),
+    status: 'running',
+    entries: [],
+    createdAt: Date.now(),
+  };
+  await db.bulkActions.add(job);
+  return job;
+}
+
+export async function updateBulkAction(
+  id: string,
+  patch: Partial<Omit<BulkAction, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.bulkActions.update(id, patch);
+}
+
+export async function listBulkActions(limit = 20): Promise<BulkAction[]> {
+  const all = await db.bulkActions.toArray();
+  return all.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+}
+
+/* --------------------------- auto-action rules ------------------------ */
+
+export async function listAutoActionRules(): Promise<AutoActionRule[]> {
+  const all = await db.autoActionRules.toArray();
+  return all.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function createAutoActionRule(
+  input: Omit<AutoActionRule, 'id' | 'createdAt' | 'updatedAt'>,
+): Promise<AutoActionRule> {
+  const now = Date.now();
+  const rule: AutoActionRule = { ...input, id: uid(), createdAt: now, updatedAt: now };
+  await db.autoActionRules.add(rule);
+  return rule;
+}
+
+export async function updateAutoActionRule(
+  id: string,
+  patch: Partial<Omit<AutoActionRule, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.autoActionRules.update(id, { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteAutoActionRule(id: string): Promise<void> {
+  await db.autoActionRules.delete(id);
+}
+
+/* --------------------------- auto-action events ----------------------- */
+
+/** Append an event; the feed is trimmed to the latest 200 rows. */
+export async function addAutoActionEvent(
+  input: Omit<AutoActionEvent, 'id'>,
+): Promise<AutoActionEvent> {
+  const event: AutoActionEvent = { ...input, id: uid() };
+  await db.autoActionEvents.add(event);
+  const count = await db.autoActionEvents.count();
+  if (count > 200) {
+    const oldest = await db.autoActionEvents.orderBy('at').limit(count - 200).toArray();
+    await db.autoActionEvents.bulkDelete(oldest.map((e) => e.id));
+  }
+  return event;
+}
+
+export async function listAutoActionEvents(limit = 100): Promise<AutoActionEvent[]> {
+  const all = await db.autoActionEvents.toArray();
+  return all.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+/** Actions executed today (status 'done'), across all rules — the shared daily cap (§7-2). */
+export async function countAutoActionEventsToday(now = Date.now()): Promise<number> {
+  const from = startOfDay(now);
+  const all = await db.autoActionEvents.where('at').aboveOrEqual(from).toArray();
+  return all.filter((e) => e.status === 'done').length;
+}
+
+/* ---------------------------- post analytics -------------------------- */
+
+/** Replace the stored analytics snapshot for one account with a fresh fetch. */
+export async function savePostAnalytics(
+  accountId: string,
+  rows: Omit<PostAnalytics, 'id'>[],
+): Promise<void> {
+  await db.transaction('rw', db.postAnalytics, async () => {
+    await db.postAnalytics.where('accountId').equals(accountId).delete();
+    if (rows.length > 0) {
+      await db.postAnalytics.bulkAdd(rows.map((r) => ({ ...r, id: uid() })));
+    }
+  });
+}
+
+export async function listPostAnalytics(
+  accountId: string,
+  limit = 2000,
+): Promise<PostAnalytics[]> {
+  const rows = await db.postAnalytics.where('accountId').equals(accountId).toArray();
+  return rows.sort((a, b) => b.postedAt - a.postedAt).slice(0, limit);
+}
+
+/* ----------------------------- post tracking -------------------------- */
+
+export async function createPostTracking(
+  input: Omit<PostTracking, 'id' | 'createdAt'>,
+): Promise<PostTracking> {
+  const row: PostTracking = { ...input, id: uid(), createdAt: Date.now() };
+  await db.postTracking.add(row);
+  // Research §12-2: keep at most 10,000 tracked posts, newest first.
+  const count = await db.postTracking.count();
+  if (count > 10_000) {
+    const oldest = await db.postTracking.orderBy('createdAt').limit(count - 10_000).toArray();
+    await db.postTracking.bulkDelete(oldest.map((t) => t.id));
+  }
+  return row;
+}
+
+export async function updatePostTracking(
+  id: string,
+  patch: Partial<Omit<PostTracking, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.postTracking.update(id, patch);
+}
+
+export async function listPostTracking(groupId?: string): Promise<PostTracking[]> {
+  const all = groupId
+    ? await db.postTracking.where('groupId').equals(groupId).toArray()
+    : await db.postTracking.toArray();
+  return all.sort((a, b) => b.postedAt - a.postedAt);
+}
+
+/* ---------------------------- follower history ------------------------ */
+
+/** Upsert today's follower count for an account (one row per day, §12-3). */
+export async function recordFollowerHistory(
+  accountId: string,
+  followers: number,
+  date = localDateString(Date.now()),
+): Promise<void> {
+  const existing = await db.followerHistory
+    .where('accountId')
+    .equals(accountId)
+    .filter((r) => r.date === date)
+    .first();
+  if (existing) {
+    await db.followerHistory.update(existing.id, { followers });
+  } else {
+    const row: FollowerHistory = { id: uid(), accountId, date, followers };
+    await db.followerHistory.add(row);
+  }
+  // Research §12-3: keep at most 400 days per account.
+  const rows = await db.followerHistory.where('accountId').equals(accountId).toArray();
+  if (rows.length > 400) {
+    const sorted = rows.sort((a, b) => a.date.localeCompare(b.date));
+    await db.followerHistory.bulkDelete(sorted.slice(0, rows.length - 400).map((r) => r.id));
+  }
+}
+
+export async function listFollowerHistory(
+  accountId: string,
+  fromDate?: string,
+): Promise<FollowerHistory[]> {
+  const rows = await db.followerHistory.where('accountId').equals(accountId).toArray();
+  return rows
+    .filter((r) => !fromDate || r.date >= fromDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/* ----------------------------- notifications -------------------------- */
+
+/**
+ * Merge freshly fetched items, deduping on (accountId, kind, title, at).
+ * Returns the number of newly added items.
+ */
+export async function addNotifications(
+  items: Omit<NotificationItem, 'id' | 'read'>[],
+): Promise<number> {
+  const existing = await db.notifications.toArray();
+  const keys = new Set(existing.map((n) => `${n.accountId}|${n.kind}|${n.title}|${n.at}`));
+  const fresh = items.filter((i) => !keys.has(`${i.accountId}|${i.kind}|${i.title}|${i.at}`));
+  if (fresh.length > 0) {
+    await db.notifications.bulkAdd(
+      fresh.map((i) => ({ ...i, id: uid(), read: false })),
+    );
+  }
+  return fresh.length;
+}
+
+export async function listNotifications(
+  accountId?: string,
+  limit = 200,
+): Promise<NotificationItem[]> {
+  const all = accountId
+    ? await db.notifications.where('accountId').equals(accountId).toArray()
+    : await db.notifications.toArray();
+  return all.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+export async function countUnreadNotifications(accountId?: string): Promise<number> {
+  const all = accountId
+    ? await db.notifications.where('accountId').equals(accountId).toArray()
+    : await db.notifications.toArray();
+  return all.filter((n) => !n.read).length;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await db.notifications.update(id, { read: true });
+}
+
+export async function markAllNotificationsRead(accountId?: string): Promise<void> {
+  const all = accountId
+    ? await db.notifications.where('accountId').equals(accountId).toArray()
+    : await db.notifications.toArray();
+  const unread = all.filter((n) => !n.read);
+  if (unread.length > 0) {
+    await db.notifications.bulkPut(unread.map((n) => ({ ...n, read: true })));
+  }
+}
+
+/* ------------------------------ auto-post ----------------------------- */
+
+export async function listAutoPostRules(): Promise<AutoPostRule[]> {
+  const all = await db.autoPostRules.toArray();
+  return all.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function createAutoPostRule(
+  input: Omit<AutoPostRule, 'id' | 'createdAt' | 'updatedAt'>,
+): Promise<AutoPostRule> {
+  const now = Date.now();
+  const rule: AutoPostRule = { ...input, id: uid(), createdAt: now, updatedAt: now };
+  await db.autoPostRules.add(rule);
+  return rule;
+}
+
+export async function updateAutoPostRule(
+  id: string,
+  patch: Partial<Omit<AutoPostRule, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.autoPostRules.update(id, { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteAutoPostRule(id: string): Promise<void> {
+  await db.autoPostRules.delete(id);
+}
+
+export async function addAutoPostRun(
+  input: Omit<AutoPostRun, 'id'>,
+): Promise<AutoPostRun> {
+  const run: AutoPostRun = { ...input, id: uid() };
+  await db.autoPostRuns.add(run);
+  return run;
+}
+
+export async function listAutoPostRuns(limit = 100): Promise<AutoPostRun[]> {
+  const all = await db.autoPostRuns.toArray();
+  return all.sort((a, b) => b.at - a.at).slice(0, limit);
 }
