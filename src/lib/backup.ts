@@ -1,8 +1,14 @@
 import type {
   Account,
+  ActionJob,
   AppSettings,
+  AutomationRule,
+  CheckRun,
+  FollowerSnapshot,
   Group,
+  InboxItem,
   PostJob,
+  PostMetric,
   ProxyGroup,
   RandomWordSet,
   Reservation,
@@ -43,6 +49,13 @@ export interface BackupTables {
   reservations: Reservation[];
   /** App settings (full backups only). */
   settings: AppSettings | null;
+  /** M3/M4 tables; absent (empty) in backups made before M3/M4. */
+  checkRuns: CheckRun[];
+  followerSnapshots: FollowerSnapshot[];
+  postMetrics: PostMetric[];
+  automationRules: AutomationRule[];
+  inboxItems: InboxItem[];
+  actionJobs: ActionJob[];
 }
 
 export interface BackupPayload {
@@ -189,6 +202,10 @@ export function validateBackupPayload(value: unknown): BackupPayload {
       throw new Error(`バックアップのテーブル「${key}」が壊れています`);
     }
   }
+  // M3/M4 tables did not exist in older backups; treat them as empty.
+  for (const key of ['checkRuns', 'followerSnapshots', 'postMetrics', 'automationRules', 'inboxItems', 'actionJobs'] as const) {
+    if (!Array.isArray(p.tables[key])) p.tables[key] = [];
+  }
   return p;
 }
 
@@ -203,6 +220,12 @@ export function emptyTables(): BackupTables {
     postJobs: [],
     reservations: [],
     settings: null,
+    checkRuns: [],
+    followerSnapshots: [],
+    postMetrics: [],
+    automationRules: [],
+    inboxItems: [],
+    actionJobs: [],
   };
 }
 

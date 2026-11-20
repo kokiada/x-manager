@@ -333,3 +333,173 @@ export interface Reservation {
   /** The post job created when this reservation fired. */
   jobId?: string;
 }
+
+/* ==================== M3: check runs & follower trend ==================== */
+
+/** One account's outcome inside a check run (research §9-1 / §10). */
+export interface CheckRunEntry {
+  accountId: string;
+  handle: string;
+  /** Account-check outcome (status + counts + followers). */
+  status?: AccountStatus;
+  notifications?: number;
+  dmCount?: number;
+  followers?: number;
+  /** Search-ban outcome: null = fetch failed (⚠). */
+  topicVisible?: boolean | null;
+  latestVisible?: boolean | null;
+  checkedByAccountId?: string;
+  checkedByHandle?: string;
+  error?: string;
+}
+
+export type CheckRunKind = 'account' | 'search_ban';
+
+export interface CheckRun {
+  id: string;
+  kind: CheckRunKind;
+  status: 'running' | 'done';
+  /** True when fired by the periodic engine (M3), false when manual. */
+  scheduled: boolean;
+  startedAt: number;
+  finishedAt?: number;
+  entries: CheckRunEntry[];
+}
+
+/**
+ * One day's follower count for one account (research §12-3).
+ * Recorded by account checks; at most one row per account per day
+ * (later checks the same day overwrite), kept 400 days max.
+ */
+export interface FollowerSnapshot {
+  /** `${accountId}:${date}` */
+  id: string;
+  accountId: string;
+  /** Local date, "YYYY-MM-DD". */
+  date: string;
+  followers: number;
+  at: number;
+}
+
+/* ================= M4: bulk actions, analytics, automation ============= */
+
+/** Bulk-action kinds (research §7-1 / §8). Executor mirrors this union. */
+export type BulkActionKind = 'like' | 'repost' | 'bookmark' | 'follow';
+
+export const BULK_ACTION_LABELS: Record<BulkActionKind, string> = {
+  like: 'いいね',
+  repost: 'リポスト',
+  bookmark: 'ブックマーク',
+  follow: 'フォロー',
+};
+
+export type ActionJobEntryStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+export interface ActionJobEntry {
+  accountId: string;
+  handle: string;
+  /** Post URL (like / repost / bookmark) or @handle (follow). */
+  target: string;
+  status: ActionJobEntryStatus;
+  error?: string;
+  at?: number;
+}
+
+export type ActionJobStatus = 'running' | 'done' | 'partial' | 'cancelled';
+
+export interface ActionJob {
+  id: string;
+  kind: BulkActionKind;
+  /** Targets in execution order. */
+  targets: string[];
+  /** Research §7-1: process one target across all accounts, then the next. */
+  queueOneByOne: boolean;
+  status: ActionJobStatus;
+  entries: ActionJobEntry[];
+  /** Automation rule that created this job, if any. */
+  ruleId?: string;
+  createdAt: number;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+/**
+ * One metrics snapshot for a tracked post (research §12-2).
+ * The simulator derives plausible values from the post ID and age,
+ * so every tracked post has a full 30m–48h curve without a live X
+ * connection; a real executor would fill these from public counts.
+ */
+export interface PostMetric {
+  /** `${postId}:${at}` */
+  id: string;
+  postId: string;
+  accountId: string;
+  handle: string;
+  postUrl: string;
+  text: string;
+  postedAt: number;
+  at: number;
+  likes: number;
+  reposts: number;
+  bookmarks: number;
+  views: number;
+}
+
+/** Automation rules (research §6-6 auto-post, §7-2 auto-action). */
+export type AutomationKind = 'auto_post' | 'auto_action';
+export type AutoPostMode = 'window' | 'times' | 'weekly';
+
+export interface AutomationRule {
+  id: string;
+  kind: AutomationKind;
+  name: string;
+  enabled: boolean;
+  /** Accounts the rule runs as (auto-post) or reacts with (auto-action). */
+  accountIds: string[];
+  /** Auto-post: template to post. Auto-action reply: template for replies. */
+  templateId?: string;
+  /** Auto-post schedule mode. */
+  mode?: AutoPostMode;
+  /** 'window' mode: local "HH:MM" bounds for the day's posts. */
+  windowStart?: string;
+  windowEnd?: string;
+  /** 'window' mode: posts per day inside the window. */
+  postsPerDay?: number;
+  /** 'times' / 'weekly' mode: local "HH:MM" times (max 48). */
+  times?: string[];
+  /** 'times' mode jitter: 0 | 5 | 15 | 30 minutes. */
+  jitterMin?: number;
+  /** 'weekly' mode: 0 = Sunday … 6 = Saturday. */
+  weekdays?: number[];
+  /** 'window' mode: 'shuffle' = shuffled round-robin, else sequential. */
+  order?: 'shuffle' | 'sequential';
+  /** Skip accounts with a search-ban verdict in the last 24h (§6-6). */
+  skipSearchBanned?: boolean;
+  /** Auto-action: which reactions to run. */
+  actionKinds?: BulkActionKind[];
+  /** Auto-action: only react to posts containing this phrase. */
+  keyword?: string;
+  /** Auto-action: shared daily cap across all rules (§7-2). */
+  dailyCap?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/* ======================== M4: notification / DM ======================== */
+
+/**
+ * One aggregated notification / DM item (research §11).
+ * Counts come from account checks (§10); the items themselves are
+ * the simulator's stand-in for the feed a real executor would fetch.
+ * Marking read only affects this device's inbox view.
+ */
+export interface InboxItem {
+  id: string;
+  accountId: string;
+  handle: string;
+  kind: 'notification' | 'dm';
+  title: string;
+  body: string;
+  at: number;
+  read: boolean;
+}

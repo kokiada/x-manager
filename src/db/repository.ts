@@ -1,11 +1,17 @@
 import { db } from './db';
 import type {
   Account,
+  ActionJob,
   AppSettings,
+  AutomationRule,
+  CheckRun,
+  FollowerSnapshot,
   Group,
+  InboxItem,
   NewAccount,
   NewTemplate,
   PostJob,
+  PostMetric,
   ProxyGroup,
   RandomWordSet,
   Reservation,
@@ -304,6 +310,179 @@ export async function listDueReservations(now: number): Promise<Reservation[]> {
     .sort((a, b) => a.scheduledAt - b.scheduledAt);
 }
 
+/* ==================== M3: check runs & follower trend ==================== */
+
+export async function createCheckRun(
+  run: Omit<CheckRun, 'id' | 'startedAt'>,
+): Promise<CheckRun> {
+  const full: CheckRun = { ...run, id: uid(), startedAt: Date.now() };
+  await db.checkRuns.add(full);
+  return full;
+}
+
+export async function updateCheckRun(
+  id: string,
+  patch: Partial<Omit<CheckRun, 'id' | 'startedAt'>>,
+): Promise<void> {
+  await db.checkRuns.update(id, patch);
+}
+
+export async function listCheckRuns(kind?: CheckRun['kind'], limit = 20): Promise<CheckRun[]> {
+  const all = await db.checkRuns.toArray();
+  return all
+    .filter((r) => !kind || r.kind === kind)
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, limit);
+}
+
+/** One follower snapshot per account per day; same-day re-checks overwrite (§12-3). */
+export async function recordFollowerSnapshot(
+  accountId: string,
+  date: string,
+  followers: number,
+): Promise<void> {
+  await db.followerSnapshots.put({
+    id: `${accountId}:${date}`,
+    accountId,
+    date,
+    followers,
+    at: Date.now(),
+  });
+}
+
+export async function listFollowerSnapshots(accountId: string): Promise<FollowerSnapshot[]> {
+  const all = await db.followerSnapshots.where('accountId').equals(accountId).toArray();
+  return all.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Latest snapshot per account (for the analytics trend table). */
+export async function listLatestFollowerSnapshots(): Promise<FollowerSnapshot[]> {
+  const all = await db.followerSnapshots.toArray();
+  const byAccount = new Map<string, FollowerSnapshot>();
+  for (const s of all) {
+    const prev = byAccount.get(s.accountId);
+    if (!prev || s.date > prev.date) byAccount.set(s.accountId, s);
+  }
+  return [...byAccount.values()];
+}
+
+/* ==================== M4: action jobs & post metrics ==================== */
+
+export async function createActionJob(
+  job: Omit<ActionJob, 'id' | 'createdAt'>,
+): Promise<ActionJob> {
+  const full: ActionJob = { ...job, id: uid(), createdAt: Date.now() };
+  await db.actionJobs.add(full);
+  return full;
+}
+
+export async function updateActionJob(
+  id: string,
+  patch: Partial<Omit<ActionJob, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.actionJobs.update(id, patch);
+}
+
+export async function listActionJobs(limit = 30): Promise<ActionJob[]> {
+  const all = await db.actionJobs.toArray();
+  return all.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+}
+
+/** Action entries created today by one rule (for the shared daily cap, §7-2). */
+export async function countTodayActionEntries(ruleId: string, dayStart: number): Promise<number> {
+  const jobs = await db.actionJobs.where('ruleId').equals(ruleId).toArray();
+  return jobs
+    .filter((j) => j.createdAt >= dayStart)
+    .reduce((n, j) => n + j.entries.filter((e) => e.status === 'done').length, 0);
+}
+
+/** Has this rule already reacted to this post? (§7-2: never twice.) */
+export async function ruleActedOnPost(ruleId: string, postId: string): Promise<boolean> {
+  const jobs = await db.actionJobs.where('ruleId').equals(ruleId).toArray();
+  return jobs.some((j) =>
+    j.entries.some((e) => e.status === 'done' && e.target.includes(postId)),
+  );
+}
+
+export async function recordPostMetric(metric: PostMetric): Promise<void> {
+  await db.postMetrics.put(metric);
+}
+
+export async function listPostMetrics(postId: string): Promise<PostMetric[]> {
+  const all = await db.postMetrics.where('postId').equals(postId).toArray();
+  return all.sort((a, b) => a.at - b.at);
+}
+
+/** Latest metrics snapshot per tracked post. */
+export async function listLatestPostMetrics(): Promise<PostMetric[]> {
+  const all = await db.postMetrics.toArray();
+  const byPost = new Map<string, PostMetric>();
+  for (const m of all) {
+    const prev = byPost.get(m.postId);
+    if (!prev || m.at > prev.at) byPost.set(m.postId, m);
+  }
+  return [...byPost.values()].sort((a, b) => b.postedAt - a.postedAt);
+}
+
+/* ======================= M4: automation rules ======================= */
+
+export async function listAutomationRules(kind?: AutomationRule['kind']): Promise<AutomationRule[]> {
+  const all = await db.automationRules.toArray();
+  return all
+    .filter((r) => !kind || r.kind === kind)
+    .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function getAutomationRule(id: string): Promise<AutomationRule | undefined> {
+  return db.automationRules.get(id);
+}
+
+export async function createAutomationRule(
+  input: Omit<AutomationRule, 'id' | 'createdAt' | 'updatedAt'>,
+): Promise<AutomationRule> {
+  const now = Date.now();
+  const rule: AutomationRule = { ...input, id: uid(), createdAt: now, updatedAt: now };
+  await db.automationRules.add(rule);
+  return rule;
+}
+
+export async function updateAutomationRule(
+  id: string,
+  patch: Partial<Omit<AutomationRule, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.automationRules.update(id, { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteAutomationRule(id: string): Promise<void> {
+  await db.automationRules.delete(id);
+}
+
+/* ========================== M4: inbox items ========================== */
+
+export async function addInboxItems(
+  items: Omit<InboxItem, 'id'>[],
+): Promise<void> {
+  if (items.length === 0) return;
+  await db.inboxItems.bulkAdd(items.map((i) => ({ ...i, id: uid() })));
+}
+
+export async function listInboxItems(limit = 100): Promise<InboxItem[]> {
+  const all = await db.inboxItems.toArray();
+  return all.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+export async function countUnreadInbox(): Promise<number> {
+  return db.inboxItems.where('read').equals(0).count();
+}
+
+export async function markInboxRead(id: string): Promise<void> {
+  await db.inboxItems.update(id, { read: true });
+}
+
+export async function markAllInboxRead(): Promise<void> {
+  await db.inboxItems.where('read').equals(0).modify({ read: true });
+}
+
 /* ====================== M5: settings (single row) ====================== */
 
 /** Current app settings, with defaults filling anything unset. */
@@ -385,11 +564,17 @@ const ALL_TABLES = [
   db.postJobs,
   db.reservations,
   db.settings,
+  db.checkRuns,
+  db.followerSnapshots,
+  db.postMetrics,
+  db.automationRules,
+  db.inboxItems,
+  db.actionJobs,
 ] as const;
 
 /** Snapshot every table (plus settings) for a full backup. */
 export async function exportAllTables(): Promise<BackupTables> {
-  const [groups, proxyGroups, accounts, templateGroups, templates, randomWordSets, postJobs, reservations] =
+  const [groups, proxyGroups, accounts, templateGroups, templates, randomWordSets, postJobs, reservations, checkRuns, followerSnapshots, postMetrics, automationRules, inboxItems, actionJobs] =
     await Promise.all([
       db.groups.toArray(),
       db.proxyGroups.toArray(),
@@ -399,6 +584,12 @@ export async function exportAllTables(): Promise<BackupTables> {
       db.randomWordSets.toArray(),
       db.postJobs.toArray(),
       db.reservations.toArray(),
+      db.checkRuns.toArray(),
+      db.followerSnapshots.toArray(),
+      db.postMetrics.toArray(),
+      db.automationRules.toArray(),
+      db.inboxItems.toArray(),
+      db.actionJobs.toArray(),
     ]);
   const settingsRow = await db.settings.get('app');
   return {
@@ -411,6 +602,12 @@ export async function exportAllTables(): Promise<BackupTables> {
     postJobs,
     reservations,
     settings: settingsRow?.settings ?? null,
+    checkRuns,
+    followerSnapshots,
+    postMetrics,
+    automationRules,
+    inboxItems,
+    actionJobs,
   };
 }
 
@@ -429,6 +626,12 @@ export async function replaceAllTables(tables: BackupTables): Promise<void> {
     if (tables.randomWordSets.length) await db.randomWordSets.bulkAdd(tables.randomWordSets);
     if (tables.postJobs.length) await db.postJobs.bulkAdd(tables.postJobs);
     if (tables.reservations.length) await db.reservations.bulkAdd(tables.reservations);
+    if (tables.checkRuns?.length) await db.checkRuns.bulkAdd(tables.checkRuns);
+    if (tables.followerSnapshots?.length) await db.followerSnapshots.bulkAdd(tables.followerSnapshots);
+    if (tables.postMetrics?.length) await db.postMetrics.bulkAdd(tables.postMetrics);
+    if (tables.automationRules?.length) await db.automationRules.bulkAdd(tables.automationRules);
+    if (tables.inboxItems?.length) await db.inboxItems.bulkAdd(tables.inboxItems);
+    if (tables.actionJobs?.length) await db.actionJobs.bulkAdd(tables.actionJobs);
     if (tables.settings) await db.settings.put({ key: 'app', settings: tables.settings });
   });
 }

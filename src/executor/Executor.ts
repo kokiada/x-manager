@@ -1,4 +1,4 @@
-import type { Account, AccountStatus, ReplyPermission } from '../db/types';
+import type { Account, AccountStatus, BulkActionKind, ReplyPermission } from '../db/types';
 
 /**
  * Executor — the layer that actually delivers operations to X.
@@ -58,7 +58,7 @@ export interface DeletePostResult {
   at: number;
 }
 
-export type BulkActionKind = 'like' | 'repost' | 'bookmark' | 'follow';
+export type { BulkActionKind } from '../db/types';
 
 export interface ActionTarget {
   /** For like / repost / bookmark. */

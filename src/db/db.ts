@@ -1,8 +1,14 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   Account,
+  ActionJob,
+  AutomationRule,
+  CheckRun,
+  FollowerSnapshot,
   Group,
+  InboxItem,
   PostJob,
+  PostMetric,
   ProxyGroup,
   RandomWordSet,
   Reservation,
@@ -26,6 +32,12 @@ export const db = new Dexie('x-manager') as Dexie & {
   postJobs: EntityTable<PostJob, 'id'>;
   reservations: EntityTable<Reservation, 'id'>;
   settings: EntityTable<SettingsRow, 'key'>;
+  checkRuns: EntityTable<CheckRun, 'id'>;
+  followerSnapshots: EntityTable<FollowerSnapshot, 'id'>;
+  postMetrics: EntityTable<PostMetric, 'id'>;
+  automationRules: EntityTable<AutomationRule, 'id'>;
+  inboxItems: EntityTable<InboxItem, 'id'>;
+  actionJobs: EntityTable<ActionJob, 'id'>;
 };
 
 db.version(1).stores({
@@ -46,4 +58,14 @@ db.version(2).stores({
 /* M5: app settings (plan, browser keep-alive, check schedules). */
 db.version(3).stores({
   settings: 'key',
+});
+
+/* M3/M4: check history, follower trend, metrics, automation, inbox, action jobs. */
+db.version(4).stores({
+  checkRuns: 'id, kind, startedAt',
+  followerSnapshots: 'id, accountId, date',
+  postMetrics: 'id, postId, at',
+  automationRules: 'id, kind, enabled',
+  inboxItems: 'id, accountId, kind, at, read',
+  actionJobs: 'id, kind, createdAt, ruleId',
 });
