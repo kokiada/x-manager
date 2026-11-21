@@ -182,6 +182,49 @@ describe('runBulkPostJob', () => {
     expect(updates.some((u) => u[0] === 'running')).toBe(true);
   });
 
+  it('メディア付き：resolveMedia で本体を付けて executor に渡す', async () => {
+    const h = harness();
+    const mediaPayload = {
+      ...payload,
+      media: [{ name: 'a.png', kind: 'image' as const, mime: 'image/png', size: 5 }],
+    };
+    const entries = await runBulkPostJob({
+      accounts: [account('a')],
+      payload: mediaPayload,
+      intervalSec: 1,
+      wordSets: {},
+      signal: new AbortController().signal,
+      deps: {
+        ...h,
+        resolveMedia: async (meta) => ({ ...meta, dataBase64: 'aGVsbG8=' }),
+      },
+    });
+    expect(entries[0].status).toBe('done');
+    expect(h.calls[0].content.mediaCount).toBe(1);
+    expect(h.calls[0].content.media).toEqual([
+      { name: 'a.png', kind: 'image', mime: 'image/png', size: 5, dataBase64: 'aGVsbG8=' },
+    ]);
+  });
+
+  it('メディアの本体が無いと executor を呼ばずに失敗にする', async () => {
+    const h = harness();
+    const mediaPayload = {
+      ...payload,
+      media: [{ name: 'a.png', kind: 'image' as const, mime: 'image/png', size: 5 }],
+    };
+    const entries = await runBulkPostJob({
+      accounts: [account('a'), account('b')],
+      payload: mediaPayload,
+      intervalSec: 1,
+      wordSets: {},
+      signal: new AbortController().signal,
+      deps: { ...h, resolveMedia: async () => null },
+    });
+    expect(entries.map((e) => e.status)).toEqual(['failed', 'failed']);
+    expect(entries[0].error).toContain('ファイル本体がありません');
+    expect(h.calls).toHaveLength(0);
+  });
+
   it('onUpdate の失敗（保存の不具合）でジョブ全体が止まらない', async () => {
     const h = harness();
     const entries = await runBulkPostJob({

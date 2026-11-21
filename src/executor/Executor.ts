@@ -21,6 +21,22 @@ import type { Account, AccountStatus, ReplyPermission } from '../db/types';
 
 export type PostTargetType = 'normal' | 'reply' | 'community';
 
+/**
+ * 1件の添付メディア（ファイル本体付き）。アプリ側が File から
+ * base64 にして Executor に渡す。シミュレータは bytes を見ない。
+ * 拡張モードでは ExtensionExecutor がチャンク転送で拡張へ送り、
+ * 拡張が upload.x.com へ上げる。`dataBase64` は生バイナリの
+ * base64（data: URL の接頭辞なし）。
+ */
+export interface PostMediaItem {
+  name: string;
+  mime: string;
+  kind: 'image' | 'video';
+  /** デコード後のバイト数（base64 長から換算する前の実サイズ）。 */
+  size: number;
+  dataBase64: string;
+}
+
 export interface PostContent {
   text: string;
   targetType?: PostTargetType;
@@ -30,6 +46,8 @@ export interface PostContent {
   communityId?: string;
   /** Number of media items attached (max 20 per post). */
   mediaCount?: number;
+  /** Media items with their bytes (segment 1 only). Absent when none. */
+  media?: PostMediaItem[];
   /** Follow-up texts posted as a reply chain (ツリー投稿). */
   threadTexts?: string[];
   /** Who may reply — normal posts only; on tree posts, segment 1 (§6-4). */

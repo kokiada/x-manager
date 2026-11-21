@@ -6,12 +6,16 @@ import { Button } from '../ui';
 
 /**
  * One selected media item. `url` is a session-only object URL for
- * preview; blobs are NOT persisted in M2 (see MediaMeta) — templates,
- * jobs and reservations store the metadata only.
+ * preview; `file` is the picked File object itself (session-only,
+ * never persisted — templates, jobs and reservations store the
+ * metadata only). Template-applied media has no `file`, so its bytes
+ * cannot be posted; the runner reports that clearly instead of
+ * pretending the post went through.
  */
 export interface SelectedMedia {
   meta: MediaMeta;
   url?: string;
+  file?: File;
 }
 
 async function probeVideoDuration(file: File): Promise<number | undefined> {
@@ -70,6 +74,7 @@ export function MediaPicker({
       added.push({
         meta: { name: file.name, kind: check.kind, mime: file.type, size: file.size, durationSec },
         url: URL.createObjectURL(file),
+        file,
       });
     }
     setMessages(notes);

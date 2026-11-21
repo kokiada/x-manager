@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXTENSION_SOURCE, PAGE_SOURCE } from './protocol';
+import { EXTENSION_SOURCE, MEDIA_CHUNK_SIZE, PAGE_SOURCE } from './protocol';
 import {
   ExtensionNotConnectedError,
   WindowPostMessageTransport,
@@ -157,5 +157,67 @@ describe('WindowPostMessageTransport', () => {
       {},
     );
     await expect(promise).rejects.toBeInstanceOf(ExtensionNotConnectedError);
+  });
+
+  it('sendMedia は base64 をチャンクに切って ack ごとに送る', async () => {
+    const win = fakeWindow();
+    const transport = new WindowPostMessageTransport(win);
+    const data = 'A'.repeat(MEDIA_CHUNK_SIZE * 2 + 100);
+    const promise = transport.sendMedia({
+      uploadId: 'u1',
+      name: 'a.png',
+      mime: 'image/png',
+      kind: 'image',
+      size: 100,
+      dataBase64: data,
+    });
+    // 3チャンク分：投稿されたチャンクに ack を返すと次へ進む。
+    for (let i = 0; i < 3; i++) {
+      // 次のチャンクが投稿されるまで待つ。
+      for (let tries = 0; tries < 50 && win.posted.length < i + 1; tries++) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      const chunk = win.posted[i] as Record<string, unknown>;
+      expect(chunk).toMatchObject({
+        source: PAGE_SOURCE,
+        kind: 'media-chunk',
+        uploadId: 'u1',
+        index: i,
+        totalChunks: 3,
+      });
+      expect(chunk.data).toBe(data.slice(i * MEDIA_CHUNK_SIZE, (i + 1) * MEDIA_CHUNK_SIZE));
+      win.dispatch({
+        source: EXTENSION_SOURCE,
+        kind: 'media-chunk-ack',
+        uploadId: 'u1',
+        index: i,
+      });
+    }
+    await expect(promise).resolves.toBeUndefined();
+    expect(win.posted).toHaveLength(3);
+  });
+
+  it('sendMedia は ack の error をそのまま失敗にする', async () => {
+    const win = fakeWindow();
+    const transport = new WindowPostMessageTransport(win);
+    const promise = transport.sendMedia({
+      uploadId: 'u2',
+      name: 'a.png',
+      mime: 'image/png',
+      kind: 'image',
+      size: 4,
+      dataBase64: 'aGVsbG8=',
+    });
+    for (let tries = 0; tries < 50 && win.posted.length < 1; tries++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    win.dispatch({
+      source: EXTENSION_SOURCE,
+      kind: 'media-chunk-ack',
+      uploadId: 'u2',
+      index: 0,
+      error: 'メディア転送のデータが base64 ではありません。',
+    });
+    await expect(promise).rejects.toThrow('base64 ではありません');
   });
 });

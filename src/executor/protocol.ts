@@ -25,8 +25,25 @@ export const EXTENSION_SOURCE = 'x-manager-extension';
 
 /** ジョブ1件の既定タイムアウト（実X操作は数秒〜十数秒かかる）。 */
 export const JOB_TIMEOUT_MS = 30_000;
+/** メディア付きジョブのタイムアウト（アップロード分を見込む）。 */
+export const MEDIA_JOB_TIMEOUT_MS = 120_000;
 /** ハンドシェイク（拡張の有無確認）のタイムアウト。 */
 export const HELLO_TIMEOUT_MS = 3_000;
+
+/**
+ * メディア転送（アプリ → 拡張）の1チャンクの base64 文字数。
+ * chrome.runtime.sendMessage は大きなメッセージに弱いため、
+ * メディア本体はこのサイズに切って `media-chunk` で送る。
+ */
+export const MEDIA_CHUNK_SIZE = 256 * 1024;
+/**
+ * 転送路（チャンク分割した runtime メッセージ）の実用上の上限。
+ * 1件 32MB・1ポスト合計 64MBを超えるメディアは、拡張に送る前に
+ * アプリ側で弾く（base64 化して何千通も送るのは現実的でない）。
+ * X自体の上限（画像5MB・GIF15MB・動画512MB）とは別枠。
+ */
+export const MEDIA_MAX_ITEM_BYTES = 32 * 1024 * 1024;
+export const MEDIA_MAX_POST_BYTES = 64 * 1024 * 1024;
 
 /** Executor のメソッドと1対1で対応するジョブ種別。 */
 export type ExtensionMethod =
@@ -48,6 +65,35 @@ export interface ExtensionJob {
   accountHandle: string;
   /** メソッド固有の引数（JSON化できる値のみ）。 */
   payload: Record<string, unknown>;
+  /**
+   * このジョブだけのタイムアウト（ms）。未指定なら JOB_TIMEOUT_MS。
+   * メディア付き投稿はアップロード分の 120 秒を使う。
+   */
+  timeoutMs?: number;
+}
+
+/** アプリ → 拡張：メディア本体の1チャンク。 */
+export interface MediaChunkMessage {
+  source: typeof PAGE_SOURCE;
+  kind: 'media-chunk';
+  /** 転送セッションID（ジョブの media 参照と一致させる）。 */
+  uploadId: string;
+  /** 0始まりのチャンク番号。 */
+  index: number;
+  /** 全チャンク数。 */
+  totalChunks: number;
+  /** このチャンクの base64（接頭辞なし）。 */
+  data: string;
+}
+
+/** 拡張 → アプリ：メディアチャンクの受領応答。 */
+export interface MediaChunkAckMessage {
+  source: typeof EXTENSION_SOURCE;
+  kind: 'media-chunk-ack';
+  uploadId: string;
+  index: number;
+  /** 受領できなかった場合の理由（日本語）。 */
+  error?: string;
 }
 
 /** ジョブ失敗の分類。`not_implemented` は「拡張が応答したが、その操作はまだ実装されていない」ことを表す（次の段階で消えていく）。`extension_broken` は拡張自体が壊れた状態（Cookie API が使えない等）で、再読み込みが必要。 */
@@ -131,13 +177,15 @@ export interface SessionsMessage {
 export type PageMessage =
   | (HelloMessage & { kind: 'hello' })
   | ({ source: typeof PAGE_SOURCE; kind: 'job' } & ExtensionJob)
-  | ListSessionsMessage;
+  | ListSessionsMessage
+  | MediaChunkMessage;
 
 /** 拡張 → アプリ：window 経由で返すメッセージ。 */
 export type ExtensionMessage =
   | HelloAckMessage
   | ({ source: typeof EXTENSION_SOURCE; kind: 'result' } & ExtensionJobResult)
-  | SessionsMessage;
+  | SessionsMessage
+  | MediaChunkAckMessage;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -146,7 +194,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** 拡張からのメッセージかどうか（送信元と形だけ見る）。 */
 export function isExtensionMessage(value: unknown): value is ExtensionMessage {
   if (!isRecord(value) || value.source !== EXTENSION_SOURCE) return false;
-  return value.kind === 'hello-ack' || value.kind === 'result' || value.kind === 'sessions';
+  return (
+    value.kind === 'hello-ack' ||
+    value.kind === 'result' ||
+    value.kind === 'sessions' ||
+    value.kind === 'media-chunk-ack'
+  );
 }
 
 export function isHelloAck(value: unknown): value is HelloAckMessage {
@@ -185,6 +238,38 @@ export function isJobResult(value: unknown): value is ExtensionJobResult & {
     (value.data === undefined || isRecord(value.data)) &&
     (value.error === undefined || typeof value.error === 'string') &&
     (value.code === undefined || typeof value.code === 'string')
+  );
+}
+
+/**
+ * メディアチャンクの形かどうか。base64 の中身までは見ない
+ * （拡張側が受け取り時に長さ・番号を検査する）。
+ */
+export function isMediaChunkMessage(value: unknown): value is MediaChunkMessage {
+  return (
+    isRecord(value) &&
+    value.source === PAGE_SOURCE &&
+    value.kind === 'media-chunk' &&
+    typeof value.uploadId === 'string' &&
+    value.uploadId.length > 0 &&
+    typeof value.index === 'number' &&
+    Number.isInteger(value.index) &&
+    value.index >= 0 &&
+    typeof value.totalChunks === 'number' &&
+    Number.isInteger(value.totalChunks) &&
+    value.totalChunks >= 1 &&
+    value.index < value.totalChunks &&
+    typeof value.data === 'string'
+  );
+}
+
+export function isMediaChunkAck(value: unknown): value is MediaChunkAckMessage {
+  return (
+    isRecord(value) &&
+    value.source === EXTENSION_SOURCE &&
+    value.kind === 'media-chunk-ack' &&
+    typeof value.uploadId === 'string' &&
+    typeof value.index === 'number'
   );
 }
 

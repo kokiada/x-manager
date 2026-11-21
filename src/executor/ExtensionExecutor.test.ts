@@ -7,7 +7,11 @@ import {
   EXTENSION_NOT_IMPLEMENTED_MESSAGE,
 } from './ExtensionExecutor';
 import type { ExtensionJob, ExtensionJobResult } from './protocol';
-import { ExtensionNotConnectedError, type ExtensionTransport } from './transport';
+import {
+  ExtensionNotConnectedError,
+  type ExtensionTransport,
+  type MediaTransferItem,
+} from './transport';
 
 function fakeAccount(): Account {
   return {
@@ -27,12 +31,17 @@ function fakeAccount(): Account {
 
 function fakeTransport(
   handler: (job: ExtensionJob) => ExtensionJobResult | Promise<ExtensionJobResult>,
-): ExtensionTransport & { sent: ExtensionJob[] } {
+): ExtensionTransport & { sent: ExtensionJob[]; sentMedia: MediaTransferItem[] } {
   const sent: ExtensionJob[] = [];
+  const sentMedia: MediaTransferItem[] = [];
   return {
     sent,
+    sentMedia,
     ping: async () => ({ version: 1, extensionVersion: '0.1.0' }),
     listSessions: async () => [{ accountId: 'acc-1', handle: 'testuser' }],
+    sendMedia: async (item) => {
+      sentMedia.push(item);
+    },
     sendJob: async (job) => {
       sent.push(job);
       return handler(job);
@@ -61,6 +70,84 @@ describe('ExtensionExecutor', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0].method).toBe('executePost');
     expect(transport.sent[0].accountId).toBe('acc-1');
+  });
+
+  it('メディア付き投稿は本体を先に転送し、ジョブには参照だけを載せる', async () => {
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: true,
+      data: { postId: '999', postUrl: 'https://x.com/testuser/status/999' },
+      at: 123,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    const result = await executor.executePost(fakeAccount(), {
+      text: '写真付き',
+      mediaCount: 1,
+      media: [{ name: 'a.png', mime: 'image/png', kind: 'image', size: 5, dataBase64: 'aGVsbG8=' }],
+    });
+    expect(result.ok).toBe(true);
+    expect(transport.sentMedia).toHaveLength(1);
+    expect(transport.sentMedia[0].dataBase64).toBe('aGVsbG8=');
+    expect(typeof transport.sentMedia[0].uploadId).toBe('string');
+    expect(transport.sent).toHaveLength(1);
+    const jobContent = transport.sent[0].payload.content as Record<string, any>;
+    expect(jobContent.media).toEqual([
+      {
+        uploadId: transport.sentMedia[0].uploadId,
+        name: 'a.png',
+        mime: 'image/png',
+        kind: 'image',
+        size: 5,
+      },
+    ]);
+    expect('dataBase64' in jobContent.media[0]).toBe(false);
+    expect(transport.sent[0].timeoutMs).toBe(120_000);
+  });
+
+  it('1件32MBを超えるメディアは送らずに失敗する', async () => {
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: true,
+      data: { postId: '999', postUrl: 'https://x.com/testuser/status/999' },
+      at: 123,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    const result = await executor.executePost(fakeAccount(), {
+      text: 'x',
+      mediaCount: 1,
+      media: [
+        { name: 'big.mp4', mime: 'video/mp4', kind: 'video', size: 33 * 1024 * 1024, dataBase64: 'AA==' },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('32MB');
+    expect(transport.sentMedia).toHaveLength(0);
+    expect(transport.sent).toHaveLength(0);
+  });
+
+  it('合計64MBを超えるメディアは送らずに失敗する', async () => {
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: true,
+      data: { postId: '999', postUrl: 'https://x.com/testuser/status/999' },
+      at: 123,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    const result = await executor.executePost(fakeAccount(), {
+      text: 'x',
+      mediaCount: 3,
+      media: [1, 2, 3].map((i) => ({
+        name: `v${i}.mp4`,
+        mime: 'video/mp4',
+        kind: 'video' as const,
+        size: 25 * 1024 * 1024,
+        dataBase64: 'AA==',
+      })),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('64MB');
+    expect(transport.sentMedia).toHaveLength(0);
+    expect(transport.sent).toHaveLength(0);
   });
 
   it('拡張が not_implemented を返すと、具体的な理由があればそれを出す', async () => {

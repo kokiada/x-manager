@@ -21,12 +21,16 @@ function loadExtension(chromeStub: AnyRecord, fetchStub: AnyRecord) {
     setTimeout,
     clearTimeout,
     URLSearchParams,
+    Blob,
+    FormData,
+    atob,
+    btoa,
   };
   sandbox.self = sandbox;
   sandbox.chrome = chromeStub;
   sandbox.fetch = fetchStub;
   const ctx = createContext(sandbox);
-  for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'dispatch.js']) {
+  for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'mediaStore.js', 'dispatch.js']) {
     runInContext(
       readFileSync(new URL(`../../extension/src/${file}`, import.meta.url), 'utf8'),
       ctx,
@@ -121,6 +125,10 @@ function makeCtx(opts: {
   fetch: AnyRecord;
   resolveQueryId?: (op: string) => Promise<string | null>;
   getTransactionId?: ((method: string, url: string) => Promise<string | null>) | null;
+  pendingMedia?: AnyRecord;
+  mediaStatusDeadlineMs?: number;
+  mediaStatusPollMs?: number;
+  mediaAppendChunkBytes?: number;
 }) {
   return {
     sessions: opts.sessions,
@@ -128,6 +136,10 @@ function makeCtx(opts: {
     fetchImpl: opts.fetch,
     resolveQueryId: opts.resolveQueryId || (async () => 'QID'),
     getTransactionId: opts.getTransactionId ?? null,
+    pendingMedia: opts.pendingMedia,
+    mediaStatusDeadlineMs: opts.mediaStatusDeadlineMs,
+    mediaStatusPollMs: opts.mediaStatusPollMs,
+    mediaAppendChunkBytes: opts.mediaAppendChunkBytes,
   };
 }
 
@@ -550,20 +562,8 @@ describe('投稿（dispatch + xClient）', () => {
     expect(JSON.parse(calls[2].opts.body).variables.reply.in_reply_to_status_id).toBe('102');
   });
 
-  it('メディア付き・コミュニティ投稿は not_implemented で失敗する', async () => {
+  it('コミュニティ投稿は not_implemented で失敗する', async () => {
     const { sandbox, ctx } = setup([]);
-    await expect(
-      sandbox.XManagerDispatch.handleJob(
-        {
-          id: 'j3',
-          method: 'executePost',
-          accountId: 'a',
-          accountHandle: 'alice',
-          payload: { content: { text: 'x', mediaCount: 1 } },
-        },
-        ctx,
-      ),
-    ).rejects.toMatchObject({ code: 'not_implemented' });
     await expect(
       sandbox.XManagerDispatch.handleJob(
         {
@@ -630,6 +630,438 @@ describe('投稿（dispatch + xClient）', () => {
         forbidden.ctx,
       ),
     ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('トランザクションID') });
+  });
+});
+
+describe('メディア付き投稿（upload.x.com）', () => {
+  /** 転送済みメディアを保管庫に積む（base64 1チャンク）。 */
+  function storeMedia(ext: AnyRecord, items: Array<{ uploadId: string; bytes: Uint8Array }>) {
+    const store = ext.XManagerMediaStore.createMediaStore({});
+    for (const item of items) {
+      store.storeChunk({
+        uploadId: item.uploadId,
+        index: 0,
+        totalChunks: 1,
+        data: Buffer.from(item.bytes).toString('base64'),
+      });
+    }
+    return store;
+  }
+
+  const uploadUrl = (url: string) => url.includes('upload.x.com');
+  const uploadBody = (opts: any) => (typeof opts?.body === 'string' ? opts.body : '');
+  const uploadCmd = (cmd: string) => (url: string, opts: any) =>
+    uploadUrl(url) && uploadBody(opts).includes(`command=${cmd}`);
+  const uploadAppend = (url: string, opts: any) =>
+    uploadUrl(url) && opts?.body instanceof FormData;
+
+  function setupMedia(
+    routes: Array<{ match: (url: string, opts: any) => boolean; handle: (url: string, opts: any) => any }>,
+    opts: {
+      pendingMedia?: AnyRecord;
+      mediaStatusDeadlineMs?: number;
+      mediaStatusPollMs?: number;
+      mediaAppendChunkBytes?: number;
+    } = {},
+  ) {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub(routes);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({
+      sessions,
+      chrome: chromeStub,
+      fetch: fetchStub,
+      pendingMedia: opts.pendingMedia,
+      mediaStatusDeadlineMs: opts.mediaStatusDeadlineMs,
+      mediaStatusPollMs: opts.mediaStatusPollMs,
+      mediaAppendChunkBytes: opts.mediaAppendChunkBytes,
+    });
+    return { sandbox, ctx, fetchStub };
+  }
+
+  function createTweetRoute(restId: string) {
+    return {
+      match: GRAPHQL('CreateTweet'),
+      handle: () =>
+        jsonResponse(200, {
+          data: { create_tweet: { tweet_results: { result: { __typename: 'Tweet', rest_id: restId } } } },
+        }),
+    };
+  }
+
+  it('画像付き投稿：INIT→APPEND→FINALIZE の順で上げ、CreateTweet に media_id を付ける', async () => {
+    const { sandbox, ctx, fetchStub } = setupMedia([
+      {
+        match: uploadCmd('INIT'),
+        handle: () => jsonResponse(200, { media_id_string: 'm1' }),
+      },
+      { match: uploadAppend, handle: () => textResponse(204, '') },
+      {
+        match: uploadCmd('FINALIZE'),
+        handle: () => jsonResponse(200, {}),
+      },
+      createTweetRoute('111'),
+    ]);
+    const pendingMedia = storeMedia(sandbox, [
+      { uploadId: 'u1', bytes: new Uint8Array([104, 101, 108, 108, 111]) },
+    ]);
+    ctx.pendingMedia = pendingMedia;
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'jm1',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: {
+          content: {
+            text: '写真付き',
+            mediaCount: 1,
+            media: [{ uploadId: 'u1', name: 'a.png', mime: 'image/png', kind: 'image', size: 5 }],
+          },
+        },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('111');
+
+    const initCall = fetchStub.calls.find((c: AnyRecord) => uploadCmd('INIT')(c.url, c.opts));
+    expect(initCall.opts.body).toContain('media_type=image%2Fpng');
+    expect(initCall.opts.body).toContain('total_bytes=5');
+    expect(initCall.opts.body).toContain('media_category=tweet_image');
+
+    const appendCalls = fetchStub.calls.filter((c: AnyRecord) => uploadAppend(c.url, c.opts));
+    expect(appendCalls).toHaveLength(1);
+    expect(appendCalls[0].opts.body.get('command')).toBe('APPEND');
+    expect(appendCalls[0].opts.body.get('media_id')).toBe('m1');
+    expect(appendCalls[0].opts.body.get('segment_index')).toBe('0');
+    expect(appendCalls[0].opts.body.get('media').size).toBe(5);
+
+    const finCall = fetchStub.calls.find((c: AnyRecord) => uploadCmd('FINALIZE')(c.url, c.opts));
+    expect(finCall.opts.body).toContain('media_id=m1');
+
+    const tweetCall = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(JSON.parse(tweetCall.opts.body).variables.media.media_entities).toEqual([
+      { media_id: 'm1', tagged_users: [] },
+    ]);
+  });
+
+  it('動画付き投稿：APPEND を分割し、FINALIZE 後に STATUS を確認してから投稿する', async () => {
+    const { sandbox, ctx, fetchStub } = setupMedia(
+      [
+        {
+          match: uploadCmd('INIT'),
+          handle: () => jsonResponse(200, { media_id_string: 'm2' }),
+        },
+        { match: uploadAppend, handle: () => textResponse(204, '') },
+        {
+          match: uploadCmd('FINALIZE'),
+          handle: () => jsonResponse(200, { processing_info: { state: 'pending' } }),
+        },
+        {
+          match: uploadCmd('STATUS'),
+          handle: () => jsonResponse(200, { processing_info: { state: 'succeeded' } }),
+        },
+        createTweetRoute('222'),
+      ],
+      { mediaStatusPollMs: 1, mediaStatusDeadlineMs: 5_000, mediaAppendChunkBytes: 5 },
+    );
+    const pendingMedia = storeMedia(sandbox, [
+      { uploadId: 'u2', bytes: new Uint8Array(12).fill(7) },
+    ]);
+    ctx.pendingMedia = pendingMedia;
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'jm2',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: {
+          content: {
+            text: '動画付き',
+            mediaCount: 1,
+            media: [{ uploadId: 'u2', name: 'v.mp4', mime: 'video/mp4', kind: 'video', size: 12 }],
+          },
+        },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('222');
+    const appendCalls = fetchStub.calls.filter((c: AnyRecord) => uploadAppend(c.url, c.opts));
+    expect(appendCalls).toHaveLength(3);
+    expect(appendCalls.map((c: AnyRecord) => c.opts.body.get('segment_index'))).toEqual([
+      '0',
+      '1',
+      '2',
+    ]);
+    const initCall = fetchStub.calls.find((c: AnyRecord) => uploadCmd('INIT')(c.url, c.opts));
+    expect(initCall.opts.body).toContain('media_category=tweet_video');
+    const statusCall = fetchStub.calls.find((c: AnyRecord) => uploadCmd('STATUS')(c.url, c.opts));
+    expect(statusCall).toBeDefined();
+    const tweetCall = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(JSON.parse(tweetCall.opts.body).variables.media.media_entities).toEqual([
+      { media_id: 'm2', tagged_users: [] },
+    ]);
+  });
+
+  it('動画の処理が失敗したら x_error で失敗する', async () => {
+    const { sandbox, ctx } = setupMedia(
+      [
+        {
+          match: uploadCmd('INIT'),
+          handle: () => jsonResponse(200, { media_id_string: 'm3' }),
+        },
+        { match: uploadAppend, handle: () => textResponse(204, '') },
+        {
+          match: uploadCmd('FINALIZE'),
+          handle: () => jsonResponse(200, { processing_info: { state: 'pending' } }),
+        },
+        {
+          match: uploadCmd('STATUS'),
+          handle: () =>
+            jsonResponse(200, {
+              processing_info: { state: 'failed', error: { message: '処理できませんでした' } },
+            }),
+        },
+        createTweetRoute('333'),
+      ],
+      { mediaStatusPollMs: 1, mediaStatusDeadlineMs: 5_000 },
+    );
+    ctx.pendingMedia = storeMedia(sandbox, [
+      { uploadId: 'u3', bytes: new Uint8Array([1, 2, 3]) },
+    ]);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm3',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: {
+            content: {
+              text: '動画',
+              mediaCount: 1,
+              media: [{ uploadId: 'u3', name: 'v.mp4', mime: 'video/mp4', kind: 'video', size: 3 }],
+            },
+          },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('動画の処理に失敗') });
+  });
+
+  it('画像は5件付けられない・画像と動画の同時添付はできない・動画は2件付けられない', async () => {
+    const { sandbox, ctx } = setupMedia([createTweetRoute('444')]);
+    const five = Array.from({ length: 5 }, (_, i) => ({
+      uploadId: `i${i}`,
+      bytes: new Uint8Array([i]),
+    }));
+    ctx.pendingMedia = storeMedia(sandbox, five);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm4',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: {
+            content: {
+              text: 'x',
+              mediaCount: 5,
+              media: five.map((f, i) => ({
+                uploadId: f.uploadId,
+                name: `a${i}.png`,
+                mime: 'image/png',
+                kind: 'image',
+                size: 1,
+              })),
+            },
+          },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('画像は1ポストに4件まで') });
+
+    const mix = setupMedia([createTweetRoute('445')]);
+    mix.ctx.pendingMedia = storeMedia(mix.sandbox, [
+      { uploadId: 'm-img', bytes: new Uint8Array([1]) },
+      { uploadId: 'm-vid', bytes: new Uint8Array([2]) },
+    ]);
+    await expect(
+      mix.sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm5',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: {
+            content: {
+              text: 'x',
+              mediaCount: 2,
+              media: [
+                { uploadId: 'm-img', name: 'a.png', mime: 'image/png', kind: 'image', size: 1 },
+                { uploadId: 'm-vid', name: 'v.mp4', mime: 'video/mp4', kind: 'video', size: 1 },
+              ],
+            },
+          },
+        },
+        mix.ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('画像と動画を同時に') });
+
+    const twoVideos = setupMedia([createTweetRoute('446')]);
+    twoVideos.ctx.pendingMedia = storeMedia(twoVideos.sandbox, [
+      { uploadId: 'v1', bytes: new Uint8Array([1]) },
+      { uploadId: 'v2', bytes: new Uint8Array([2]) },
+    ]);
+    await expect(
+      twoVideos.sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm6',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: {
+            content: {
+              text: 'x',
+              mediaCount: 2,
+              media: [
+                { uploadId: 'v1', name: 'v1.mp4', mime: 'video/mp4', kind: 'video', size: 1 },
+                { uploadId: 'v2', name: 'v2.mp4', mime: 'video/mp4', kind: 'video', size: 1 },
+              ],
+            },
+          },
+        },
+        twoVideos.ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('動画は1ポストに1件まで') });
+  });
+
+  it('mediaCount があるのに media が無いと失敗する', async () => {
+    const { sandbox, ctx } = setupMedia([createTweetRoute('555')]);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm7',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: { content: { text: 'x', mediaCount: 1 } },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('ファイル本体がありません') });
+  });
+
+  it('転送データが無いメディアは失敗する', async () => {
+    const { sandbox, ctx } = setupMedia([createTweetRoute('666')]);
+    ctx.pendingMedia = storeMedia(sandbox, []);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm8',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: {
+            content: {
+              text: 'x',
+              mediaCount: 1,
+              media: [{ uploadId: 'gone', name: 'a.png', mime: 'image/png', kind: 'image', size: 1 }],
+            },
+          },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('転送データが見つかりません') });
+  });
+
+  it('INIT が失敗したら x_error で失敗する', async () => {
+    const { sandbox, ctx } = setupMedia([
+      { match: uploadCmd('INIT'), handle: () => jsonResponse(403, {}) },
+      createTweetRoute('777'),
+    ]);
+    ctx.pendingMedia = storeMedia(sandbox, [
+      { uploadId: 'u9', bytes: new Uint8Array([1, 2]) },
+    ]);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jm9',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: {
+            content: {
+              text: 'x',
+              mediaCount: 1,
+              media: [{ uploadId: 'u9', name: 'a.png', mime: 'image/png', kind: 'image', size: 2 }],
+            },
+          },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error' });
+  });
+});
+
+describe('メディア転送の保管庫（mediaStore.js）', () => {
+  function loadStore(opts: { maxBytes?: number } = {}) {
+    const sandbox: AnyRecord = { console };
+    sandbox.self = sandbox;
+    const ctx = createContext(sandbox);
+    runInContext(
+      readFileSync(new URL('../../extension/src/mediaStore.js', import.meta.url), 'utf8'),
+      ctx,
+      { filename: 'mediaStore.js' },
+    );
+    return sandbox.XManagerMediaStore.createMediaStore(opts);
+  }
+
+  it('チャンクを順不同で受け取っても正しく組み立てる', () => {
+    const store = loadStore();
+    const b64 = Buffer.from('hello world').toString('base64');
+    store.storeChunk({ uploadId: 'u', index: 1, totalChunks: 2, data: b64.slice(8) });
+    store.storeChunk({ uploadId: 'u', index: 0, totalChunks: 2, data: b64.slice(0, 8) });
+    const taken = store.take('u', { name: 'a.txt', mime: 'text/plain', kind: 'image', size: 11 });
+    expect(taken).not.toBeNull();
+    expect(Buffer.from(taken.dataBase64, 'base64').toString()).toBe('hello world');
+    expect(store.count()).toBe(0);
+  });
+
+  it('同じチャンクの二重送信・base64 以外・範囲外の番号は弾く', () => {
+    const store = loadStore();
+    store.storeChunk({ uploadId: 'u', index: 0, totalChunks: 1, data: 'aGVsbG8=' });
+    expect(() =>
+      store.storeChunk({ uploadId: 'u', index: 0, totalChunks: 1, data: 'aGVsbG8=' }),
+    ).toThrow('二重');
+    expect(() =>
+      store.storeChunk({ uploadId: 'v', index: 0, totalChunks: 1, data: 'not base64!!' }),
+    ).toThrow('base64');
+    expect(() =>
+      store.storeChunk({ uploadId: 'v', index: 1, totalChunks: 1, data: 'aGVsbG8=' }),
+    ).toThrow('チャンク番号');
+  });
+
+  it('チャンクが欠けていると take は null を返す', () => {
+    const store = loadStore();
+    store.storeChunk({ uploadId: 'u', index: 0, totalChunks: 2, data: 'aGVsbG8=' });
+    expect(store.take('u', {})).toBeNull();
+    expect(store.take('missing', {})).toBeNull();
+  });
+
+  it('上限を超えたら古い転送から捨てる', () => {
+    const store = loadStore({ maxBytes: 20 });
+    // 12バイト相当のチャンクを2件送る（上限20バイト）。
+    const data = Buffer.from('hello world!').toString('base64');
+    store.storeChunk({ uploadId: 'old', index: 0, totalChunks: 1, data });
+    expect(store.count()).toBe(1);
+    store.storeChunk({ uploadId: 'new', index: 0, totalChunks: 1, data });
+    expect(store.count()).toBe(1);
+    expect(store.take('old', {})).toBeNull();
+    expect(store.take('new', {})).not.toBeNull();
   });
 });
 

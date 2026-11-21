@@ -15,6 +15,11 @@ import type {
 } from './Executor';
 import { WindowPostMessageTransport, type ExtensionTransport } from './transport';
 import { EXTENSION_COOKIES_UNAVAILABLE_MESSAGE } from '../lib/errorMessage';
+import {
+  MEDIA_JOB_TIMEOUT_MS,
+  MEDIA_MAX_ITEM_BYTES,
+  MEDIA_MAX_POST_BYTES,
+} from './protocol';
 import type {
   ExtensionJob,
   ExtensionJobResult,
@@ -65,6 +70,7 @@ export class ExtensionExecutor implements Executor {
     method: ExtensionMethod,
     account: Account,
     payload: Record<string, unknown>,
+    timeoutMs?: number,
   ): Promise<ExtensionJobResult> {
     const job: ExtensionJob = {
       id: newJobId(),
@@ -72,6 +78,7 @@ export class ExtensionExecutor implements Executor {
       accountId: account.id,
       accountHandle: account.handle,
       payload,
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     };
     return this.transport.sendJob(job);
   }
@@ -90,7 +97,65 @@ export class ExtensionExecutor implements Executor {
 
   async executePost(account: Account, content: PostContent): Promise<PostResult> {
     const at = Date.now();
-    const result = await this.call('executePost', account, { content });
+    // メディア付きの場合、まず本体を拡張へチャンク転送する。
+    // 転送路の実用上限（1件32MB・合計64MB）を超えるものは送らずに
+    // 失敗として返す（base64 化して何千通も送るのは現実的でない）。
+    // ジョブには bytes ではなく参照（uploadId）だけを載せる。
+    let jobContent: Record<string, unknown> = { ...content };
+    let timeoutMs: number | undefined;
+    if (content.media && content.media.length > 0) {
+      const total = content.media.reduce((sum, m) => sum + (m.size || 0), 0);
+      const oversized = content.media.find((m) => (m.size || 0) > MEDIA_MAX_ITEM_BYTES);
+      if (oversized) {
+        return {
+          accountId: account.id,
+          ok: false,
+          error: `メディア「${oversized.name}」が大きすぎます（転送上限32MB）。小さくしてから再試行してください。`,
+          at,
+        };
+      }
+      if (total > MEDIA_MAX_POST_BYTES) {
+        return {
+          accountId: account.id,
+          ok: false,
+          error:
+            'メディアの合計が大きすぎます（転送上限64MB）。件数かサイズを減らしてから再試行してください。',
+          at,
+        };
+      }
+      try {
+        const refs: Array<{
+          uploadId: string;
+          name: string;
+          mime: string;
+          kind: 'image' | 'video';
+          size: number;
+        }> = [];
+        for (const item of content.media) {
+          const uploadId = newJobId();
+          await this.transport.sendMedia({ ...item, uploadId });
+          refs.push({
+            uploadId,
+            name: item.name,
+            mime: item.mime,
+            kind: item.kind,
+            size: item.size,
+          });
+        }
+        jobContent = { ...content, media: refs };
+      } catch (err) {
+        return {
+          accountId: account.id,
+          ok: false,
+          error: `メディアの転送に失敗しました：${err instanceof Error ? err.message : '拡張に接続できませんでした'}`,
+          at,
+        };
+      }
+      // アップロード分の時間を見込む（拡張側の実行タイムアウトも
+      // これに合わせる。dispatch が job.timeoutMs から決める）。
+      timeoutMs = MEDIA_JOB_TIMEOUT_MS;
+    }
+    const result = await this.call('executePost', account, { content: jobContent }, timeoutMs);
     if (!result.ok) {
       return {
         accountId: account.id,

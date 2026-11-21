@@ -7,6 +7,7 @@ function fakeTransport(overrides: Partial<ExtensionTransport>): ExtensionTranspo
     ping: async () => ({ version: 1, extensionVersion: '0.1.0' }),
     sendJob: async () => ({ id: 'x', ok: true, at: 0 }),
     listSessions: async () => [],
+    sendMedia: async () => {},
     ...overrides,
   };
 }

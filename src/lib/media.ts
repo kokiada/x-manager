@@ -86,3 +86,19 @@ export function formatBytes(bytes: number): string {
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}KB`;
   return `${bytes}B`;
 }
+
+/**
+ * File/Blob を base64 文字列にする（data: URL の接頭辞なし）。
+ * btoa は一度に大きな文字列を渡すと落ちることがあるため、
+ * 32KB ずつに切って変換する。
+ */
+export async function fileToBase64(file: Blob): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const STEP = 0x8000;
+  for (let i = 0; i < bytes.length; i += STEP) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + STEP));
+  }
+  return btoa(binary);
+}

@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { checkMedia, pickMediaForPost } from './media';
+import { checkMedia, fileToBase64, pickMediaForPost } from './media';
+
+describe('fileToBase64', () => {
+  it('File を base64（接頭辞なし）に変える', async () => {
+    const file = new File(['hello'], 'a.txt', { type: 'text/plain' });
+    await expect(fileToBase64(file)).resolves.toBe('aGVsbG8=');
+  });
+
+  it('空のファイルは空文字になる', async () => {
+    const file = new File([], 'empty.txt', { type: 'text/plain' });
+    await expect(fileToBase64(file)).resolves.toBe('');
+  });
+});
 
 describe('checkMedia', () => {
   it('accepts supported image and video extensions', () => {

@@ -1,6 +1,6 @@
 import type { Account } from '../db/types';
-import type { ComposePayload, PostJobEntry } from '../db/types';
-import type { PostContent, PostResult } from '../executor/Executor';
+import type { ComposePayload, MediaMeta, PostJobEntry } from '../db/types';
+import type { PostContent, PostMediaItem, PostResult } from '../executor/Executor';
 import { expandRandomText, type RandomWordSets } from './randomText';
 import { buildPostContent } from './bulkPost';
 
@@ -29,6 +29,14 @@ export interface JobRunnerDeps {
   wait: (ms: number, signal: AbortSignal) => Promise<void>;
   onUpdate?: (entries: PostJobEntry[]) => void | Promise<void>;
   rng?: () => number;
+  /**
+   * メディアのファイル本体を base64 で取り出す（投稿画面の
+   * セッション内メモリから）。無ければ null を返す。未指定の場合、
+   * メディア付き投稿は bytes 無しで Executor に渡される
+   * （シミュレータは mediaCount だけを見る。拡張は bytes が無いと
+   * 失敗を返す）。
+   */
+  resolveMedia?: (meta: MediaMeta) => Promise<PostMediaItem | null>;
 }
 
 /** Default wait: setTimeout-based, interrupted by abort. */
@@ -102,24 +110,61 @@ export async function runBulkPostJob(input: RunBulkPostInput): Promise<PostJobEn
       try {
         // Expand random text per post (per account), then build the call.
         const expanded = payload.segments.map((seg) => expandRandomText(seg, wordSets, rng));
-        const { content } = buildPostContent(payload, expanded, rng);
-        const result = await deps.executePost(account, content);
-        entry.at = result.at;
-        if (result.ok) {
-          entry.status = 'done';
-          entry.postId = result.postId;
-          entry.postUrl = result.postUrl;
-          entry.threadPostIds = result.threadPostIds;
+        const { content, attached } = buildPostContent(payload, expanded, rng);
+        // メディア付きの場合、ファイル本体をここで載せる。
+        // 無い（テンプレート由来の名前だけ等）ファイルがあれば、
+        // そのアカウントは失敗として記録し、Executor は呼ばない。
+        if (attached.length > 0) {
+          const resolved: PostMediaItem[] = [];
+          let missing: MediaMeta | null = null;
+          for (const meta of attached) {
+            const item = deps.resolveMedia ? await deps.resolveMedia(meta) : null;
+            if (!item) {
+              missing = meta;
+              break;
+            }
+            resolved.push(item);
+          }
+          if (missing) {
+            entry.status = 'failed';
+            entry.error = `メディア「${missing.name}」のファイル本体がありません。投稿画面で画像・動画を選び直してください。`;
+            entry.at = Date.now();
+            await emit();
+          } else {
+            content.media = resolved;
+            const result = await deps.executePost(account, content);
+            entry.at = result.at;
+            if (result.ok) {
+              entry.status = 'done';
+              entry.postId = result.postId;
+              entry.postUrl = result.postUrl;
+              entry.threadPostIds = result.threadPostIds;
+            } else {
+              entry.status = 'failed';
+              entry.error = result.error ?? '投稿に失敗しました';
+            }
+            await emit();
+          }
         } else {
-          entry.status = 'failed';
-          entry.error = result.error ?? '投稿に失敗しました';
+          const result = await deps.executePost(account, content);
+          entry.at = result.at;
+          if (result.ok) {
+            entry.status = 'done';
+            entry.postId = result.postId;
+            entry.postUrl = result.postUrl;
+            entry.threadPostIds = result.threadPostIds;
+          } else {
+            entry.status = 'failed';
+            entry.error = result.error ?? '投稿に失敗しました';
+          }
+          await emit();
         }
       } catch (err) {
         entry.status = 'failed';
         entry.error = err instanceof Error ? err.message : '投稿に失敗しました';
         entry.at = Date.now();
+        await emit();
       }
-      await emit();
     }
 
     // Interval between accounts (never after the last one). With

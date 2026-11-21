@@ -17,7 +17,11 @@ const XManagerProtocol = {
   PAGE_SOURCE: 'x-manager',
   EXTENSION_SOURCE: 'x-manager-extension',
   JOB_TIMEOUT_MS: 30000,
+  /** メディア付きジョブのタイムアウト（アップロード分を見込む）。 */
+  MEDIA_JOB_TIMEOUT_MS: 120000,
   HELLO_TIMEOUT_MS: 3000,
+  /** メディア転送の1チャンクの base64 文字数（正本と一致させる）。 */
+  MEDIA_CHUNK_SIZE: 262144,
   METHODS: [
     'executePost',
     'deletePost',
@@ -38,7 +42,10 @@ function isPageMessage(value) {
   return (
     isRecord(value) &&
     value.source === XManagerProtocol.PAGE_SOURCE &&
-    (value.kind === 'hello' || value.kind === 'job' || value.kind === 'list-sessions')
+    (value.kind === 'hello' ||
+      value.kind === 'job' ||
+      value.kind === 'list-sessions' ||
+      value.kind === 'media-chunk')
   );
 }
 

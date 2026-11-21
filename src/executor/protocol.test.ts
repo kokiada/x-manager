@@ -2,12 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   EXTENSION_SOURCE,
+  MEDIA_CHUNK_SIZE,
   PAGE_SOURCE,
   PROTOCOL_VERSION,
   helloAckDiagnostics,
   isExtensionMessage,
   isHelloAck,
   isJobResult,
+  isMediaChunkAck,
+  isMediaChunkMessage,
   isSessionsMessage,
   normalizeSessionsMessage,
 } from './protocol';
@@ -188,6 +191,74 @@ describe('protocol validators', () => {
     expect(isExtensionMessage(null)).toBe(false);
     expect(isExtensionMessage('x-manager-extension')).toBe(false);
   });
+
+  it('media-chunk / media-chunk-ack を正しく判定する', () => {
+    expect(
+      isMediaChunkMessage({
+        source: PAGE_SOURCE,
+        kind: 'media-chunk',
+        uploadId: 'u1',
+        index: 0,
+        totalChunks: 2,
+        data: 'aGVsbG8=',
+      }),
+    ).toBe(true);
+    expect(
+      isMediaChunkMessage({
+        source: PAGE_SOURCE,
+        kind: 'media-chunk',
+        uploadId: 'u1',
+        index: 2,
+        totalChunks: 2,
+        data: 'aGVsbG8=',
+      }),
+    ).toBe(false);
+    expect(
+      isMediaChunkMessage({
+        source: PAGE_SOURCE,
+        kind: 'media-chunk',
+        uploadId: 'u1',
+        index: 0,
+        totalChunks: 0,
+        data: 'aGVsbG8=',
+      }),
+    ).toBe(false);
+    expect(
+      isMediaChunkMessage({
+        source: EXTENSION_SOURCE,
+        kind: 'media-chunk',
+        uploadId: 'u1',
+        index: 0,
+        totalChunks: 1,
+        data: 'aGVsbG8=',
+      }),
+    ).toBe(false);
+    expect(
+      isMediaChunkAck({
+        source: EXTENSION_SOURCE,
+        kind: 'media-chunk-ack',
+        uploadId: 'u1',
+        index: 0,
+      }),
+    ).toBe(true);
+    expect(
+      isMediaChunkAck({
+        source: EXTENSION_SOURCE,
+        kind: 'media-chunk-ack',
+        uploadId: 'u1',
+        index: 0,
+        error: '壊れたデータです。',
+      }),
+    ).toBe(true);
+    expect(
+      isMediaChunkAck({
+        source: PAGE_SOURCE,
+        kind: 'media-chunk-ack',
+        uploadId: 'u1',
+        index: 0,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('extension/src/protocol.js との同期', () => {
@@ -199,8 +270,11 @@ describe('extension/src/protocol.js との同期', () => {
     expect(mirror).toContain(`VERSION: ${PROTOCOL_VERSION}`);
     expect(mirror).toContain(`PAGE_SOURCE: '${PAGE_SOURCE}'`);
     expect(mirror).toContain(`EXTENSION_SOURCE: '${EXTENSION_SOURCE}'`);
+    expect(mirror).toContain(`MEDIA_CHUNK_SIZE: ${MEDIA_CHUNK_SIZE}`);
     // 連携一覧の正規化ヘルパーもミラー側にあること
     expect(mirror).toContain('normalizeSessions');
+    // メディアチャンクもミラー側の isPageMessage が通すこと
+    expect(mirror).toContain(`'media-chunk'`);
     for (const method of [
       'executePost',
       'deletePost',

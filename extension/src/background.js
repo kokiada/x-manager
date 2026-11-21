@@ -8,7 +8,7 @@
  */
 'use strict';
 
-/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerQueryIds, XManagerDispatch, XManagerErrors */
+/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerQueryIds, XManagerDispatch, XManagerErrors, XManagerMediaStore */
 
 importScripts(
   'protocol.js',
@@ -18,8 +18,12 @@ importScripts(
   'session.js',
   'xClient.js',
   'transactionId.js',
+  'mediaStore.js',
   'dispatch.js',
 );
+
+// メディア転送データの一時保管庫（チャンクを組み立て直す）。
+const pendingMedia = XManagerMediaStore.createMediaStore({});
 
 // x-client-transaction-id の生成器。初期化は初回の書き込み時に遅延し、
 // 失敗したら null を返してヘッダ無しで送る（従来の動作にフォールバック）。
@@ -84,6 +88,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // 非同期で sendResponse する
   }
 
+  // メディア本体のチャンク転送：保管庫に積み、受領応答を返す。
+  if (message.kind === 'media-chunk' && message.source === XManagerProtocol.PAGE_SOURCE) {
+    try {
+      pendingMedia.storeChunk(message);
+      sendResponse({
+        source: XManagerProtocol.EXTENSION_SOURCE,
+        kind: 'media-chunk-ack',
+        uploadId: message.uploadId,
+        index: message.index,
+      });
+    } catch (err) {
+      sendResponse({
+        source: XManagerProtocol.EXTENSION_SOURCE,
+        kind: 'media-chunk-ack',
+        uploadId: typeof message.uploadId === 'string' ? message.uploadId : '',
+        index: typeof message.index === 'number' ? message.index : -1,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return false;
+  }
+
   // 実行ジョブ：セッションを確認してから dispatch へ。
   if (message.kind === 'job' && message.source === XManagerProtocol.PAGE_SOURCE) {
     if (!XManagerProtocolHelpers.isJobMessage(message)) {
@@ -100,6 +126,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sessions: XManagerSessions,
       chrome,
       fetchImpl: fetch,
+      pendingMedia,
       resolveQueryId: (op) =>
         XManagerQueryIds.getQueryId(op, {
           fetchImpl: fetch,

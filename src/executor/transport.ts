@@ -1,17 +1,20 @@
 import {
   HELLO_TIMEOUT_MS,
   JOB_TIMEOUT_MS,
+  MEDIA_CHUNK_SIZE,
   PAGE_SOURCE,
   PROTOCOL_VERSION,
   helloAckDiagnostics,
   isHelloAck,
   isJobResult,
+  isMediaChunkAck,
   isSessionsMessage,
   normalizeSessionsMessage,
   type ExtensionDiagnostics,
   type ExtensionJob,
   type ExtensionJobResult,
   type ExtensionSession,
+  type MediaChunkAckMessage,
   type PageMessage,
 } from './protocol';
 
@@ -53,6 +56,22 @@ export interface ExtensionTransport {
   sendJob(job: ExtensionJob): Promise<ExtensionJobResult>;
   /** 拡張に連携済みのアカウント（ID＋ハンドル）一覧を聞く。 */
   listSessions(): Promise<ExtensionSession[]>;
+  /**
+   * メディア本体を拡張へ送る。base64 を MEDIA_CHUNK_SIZE ずつに
+   * 切って `media-chunk` で順に送り、拡張が組み立てる。
+   * `uploadId` はジョブの media 参照と一致させる。
+   */
+  sendMedia(item: MediaTransferItem): Promise<void>;
+}
+
+/** チャンク転送する1件のメディア（bytes は base64）。 */
+export interface MediaTransferItem {
+  uploadId: string;
+  name: string;
+  mime: string;
+  kind: 'image' | 'video';
+  size: number;
+  dataBase64: string;
 }
 
 /** window.postMessage 経由で content script と話す輸送層。 */
@@ -135,10 +154,39 @@ export class WindowPostMessageTransport implements ExtensionTransport {
     const result = await this.request(
       { source: PAGE_SOURCE, kind: 'job', ...job },
       isJobResult,
-      JOB_TIMEOUT_MS,
+      job.timeoutMs ?? JOB_TIMEOUT_MS,
       `ジョブ ${job.method}`,
     );
     return result;
+  }
+
+  /**
+   * メディア本体をチャンクに切って送る。1チャンクごとに拡張の
+   * 受領応答（media-chunk-ack）を待つ。応答が無ければ
+   * ExtensionTimeoutError／未接続なら ExtensionNotConnectedError。
+   */
+  async sendMedia(item: MediaTransferItem): Promise<void> {
+    const totalChunks = Math.max(1, Math.ceil(item.dataBase64.length / MEDIA_CHUNK_SIZE));
+    for (let index = 0; index < totalChunks; index++) {
+      const ack = await this.request(
+        {
+          source: PAGE_SOURCE,
+          kind: 'media-chunk',
+          uploadId: item.uploadId,
+          index,
+          totalChunks,
+          data: item.dataBase64.slice(index * MEDIA_CHUNK_SIZE, (index + 1) * MEDIA_CHUNK_SIZE),
+        },
+        // 自分のチャンクの応答だけを受け取る（他の転送と混ざらない）。
+        (value: unknown): value is MediaChunkAckMessage =>
+          isMediaChunkAck(value) && value.uploadId === item.uploadId && value.index === index,
+        HELLO_TIMEOUT_MS,
+        `メディア転送 ${item.name} (${index + 1}/${totalChunks})`,
+      );
+      if (ack.error) {
+        throw new Error(ack.error);
+      }
+    }
   }
 
   async listSessions(): Promise<ExtensionSession[]> {

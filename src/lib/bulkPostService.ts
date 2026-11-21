@@ -1,4 +1,4 @@
-import type { ComposePayload, PostJob, Reservation } from '../db/types';
+import type { ComposePayload, MediaMeta, PostJob, Reservation } from '../db/types';
 import {
   createPostJob,
   getAccount,
@@ -9,6 +9,7 @@ import {
   updateReservation,
 } from '../db/repository';
 import { executor } from '../executor';
+import type { PostMediaItem } from '../executor/Executor';
 import {
   abortableWait,
   pendingEntries,
@@ -49,6 +50,12 @@ export interface RunJobRequest {
   intervalJitterSec?: number;
   kind: 'immediate' | 'reservation';
   reservationId?: string;
+  /**
+   * メディアのファイル本体の解決（投稿画面のセッション内メモリ）。
+   * 未指定の場合、メディア付き投稿は bytes 無しで Executor に渡る
+   * （予約の発火時など、ファイルがもう無い場合と同じ扱い）。
+   */
+  resolveMedia?: (meta: MediaMeta) => Promise<PostMediaItem | null>;
 }
 
 /** Create a post job and run it to completion (or cancellation). */
@@ -95,6 +102,7 @@ export async function createAndRunJob(req: RunJobRequest): Promise<PostJob> {
       deps: {
         executePost: (account, content) => executor.executePost(account, content),
         wait: abortableWait,
+        resolveMedia: req.resolveMedia,
         onUpdate: async (updated) => {
           await updatePostJob(job.id, { entries: updated });
         },

@@ -59,8 +59,9 @@ x-manager は同じ役割を **Chrome拡張** に担わせる。コンソール�
 （セッション切替）＋ `extension/src/dispatch.js`（振分）。
 
 - 投稿：`POST https://x.com/i/api/graphql/<queryId>/CreateTweet`。
-  ツリーは1件ずつ返信として連ねる。メディア付き・コミュニティ投稿は
-  未対応（`not_implemented` を返す）。
+  ツリーは1件ずつ返信として連ねる。メディア付き投稿は対応済み
+  （upload.x.com へ上げて `media_id` を付ける。下の「メディア付き投稿」
+  参照）。コミュニティ投稿は未対応（`not_implemented` を返す）。
 - 削除：`DeleteTweet`。いいね：`FavoriteTweet`。リポスト：`CreateRetweet`。
   ブックマーク：`CreateBookmark`。いずれも GraphQL（POST）。
 - フォロー：`GET UserByScreenName` でハンドル→ユーザーIDを解決してから
@@ -199,7 +200,7 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
 
 | メソッド | 実Xでの仕組み | 状態 |
 |---|---|---|
-| `executePost`（通常／リプライ／ツリー／予約） | CreateTweet。ツリーは返信で連ねる。メディア付き・コミュニティは未対応 | 実装済み・未検証（書き込みは取引ID要求のリスクあり） |
+| `executePost`（通常／リプライ／ツリー／予約） | CreateTweet。ツリーは返信で連ねる。メディア付きは upload.x.com 経由で対応済み。コミュニティは未対応 | 実装済み・未検証（書き込みは取引ID要求のリスクあり） |
 | `deletePost` | DeleteTweet | 実装済み・未検証 |
 | `executeAction`（いいね／リポスト／ブックマーク／フォロー） | FavoriteTweet / CreateRetweet / CreateBookmark / friendships/create.json | 実装済み・未検証 |
 | `checkAccount` | UserByScreenName＋badge_count（取れなければ -1＝不明） | 実装済み・未検証 |
@@ -207,9 +208,34 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
 | `fetchPostAnalytics` | UserTweets（最大50件）＋計測値 | 実装済み・未検証 |
 | `fetchNotifications` | notifications/all.json＋DM inbox（形式が違えば not_implemented） | 実装済み・未検証 |
 
-未対応のまま返しているもの：メディア付き投稿（upload.x.com の
-INIT/APPEND/FINALIZE が要る）、コミュニティ投稿。`not_implemented` で
+未対応のまま返しているもの：コミュニティ投稿。`not_implemented` で
 返すので、成功したように見えることはない。
+
+### メディア付き投稿（実装済み・2026-11-21）
+
+投稿画面で選んだファイルは、ブラウザのメモリに File として残る。
+実行時に `jobRunner` が各ファイルを base64 にし、アプリが拡張へ
+`media-chunk` メッセージ（256KBずつ・受領応答つき）で送る。拡張は
+`extension/src/mediaStore.js` の保管庫で組み立て直し、ジョブが来たら
+取り出して `upload.x.com/i/media/upload.json` へ上げる。
+
+- INIT（`media_type`・`total_bytes`・`media_category`＝`tweet_image` /
+  `tweet_video`）→ APPEND（5MBずつ・multipart）→ FINALIZE。
+  動画は FINALIZE 後に STATUS を確認し、処理が終わるまで待つ
+  （締切60秒。失敗したら日本語エラーで投稿を止める）。
+- 上げた `media_id` を CreateTweet の `media_entities` に付ける。
+  予約投稿は予約が発火する時点までファイルが残っていないと投稿できない
+  （ブラウザを閉じる・画面を離れると本体が無くなる）ため、本体が無ければ
+  失敗として記録し、投稿は送らない。成功を偽らない。
+- 制限：画像は1ポスト4件まで、動画は1件まで、画像と動画の同時添付は不可。
+  画像5MB（GIFは15MB）、動画512MBまで（Xの仕様）。転送路の実用上限として
+  アプリ側で1件32MB・合計64MBも設けている（超えたら送らずに日本語エラー）。
+  対応する形式は画像 png/jpg/gif/webp、動画 mp4/mov。
+- メディア付きジョブのタイムアウトは120秒（通常30秒）。拡張側の直列
+  キューはジョブのタイムアウトより少し短く切る（115秒相当）ので、
+  時間切れのときもキューが詰まらない。
+- 対応するのは `media-chunk` の転送が先に済んだジョブだけ。転送データが
+  見つからない・揃っていない場合は日本語エラーで失敗にする。
 
 ## フェーズ計画
 
@@ -226,8 +252,10 @@ INIT/APPEND/FINALIZE が要る）、コミュニティ投稿。`not_implemented`
    順に試す（手順は `extension/README.md`）。ここで初めて、書き込みが通るか
    （取引ID問題）、query ID・応答形式が生きているかが分かる。
 4. **疎通確認後の追従**：取引IDが必要なら生成器か DOM フォールバックを実装。
-   メディア付き投稿・コミュニティ投稿の実装。定期チェック・自動投稿・自動操作
+   コミュニティ投稿の実装。定期チェック・自動投稿・自動操作
    との結合確認。取得系の実クエリの精査はガッツ担当分（土台の上に実装）。
+   メディア付き投稿はこのフェーズを待たず 2026-11-21 に実装済み
+   （タスク1）。
 
 ## 既知の制限・リスク
 

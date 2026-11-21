@@ -16,6 +16,7 @@ import { errorMessageOf } from '../lib/errorMessage';
 import { checkExtensionReady } from '../lib/extensionPrecheck';
 import { createAndRunJob } from '../lib/bulkPostService';
 import { buildPostContent, validateCompose, weightedLength, POST_CHAR_LIMIT } from '../lib/bulkPost';
+import { fileToBase64 } from '../lib/media';
 import { expandRandomText, findRandomPlaceholders, type RandomWordSets } from '../lib/randomText';
 import { AccountOrderPicker } from '../components/bulk/AccountOrderPicker';
 import { AutoPostManager } from '../components/bulk/AutoPostManager';
@@ -146,6 +147,25 @@ export function BulkPost() {
     setErrors(v.errors);
     setWarnings(v.warnings);
     if (v.errors.length > 0) return;
+    // メディアのファイル本体の解決：この画面のセッション内で選んだ
+    // File だけが bytes を持つ。テンプレート由来の「名前だけ」の
+    // メディアは null を返し、ランナーが失敗として記録する。
+    const mediaByKey = new Map(
+      mediaSel
+        .filter((m) => m.file)
+        .map((m) => [`${m.meta.name}\0${m.meta.size}`, m.file as File]),
+    );
+    const resolveMedia = async (meta: { name: string; size: number; kind: 'image' | 'video'; mime: string }) => {
+      const file = mediaByKey.get(`${meta.name}\0${meta.size}`);
+      if (!file) return null;
+      return {
+        name: meta.name,
+        mime: meta.mime || file.type,
+        kind: meta.kind,
+        size: file.size,
+        dataBase64: await fileToBase64(file),
+      };
+    };
     // 拡張モードでは投稿を送る前に疎通確認（接続＋Cookie API）。
     // ダメならここで止めて理由を出し、1件30秒の時間切れを
     // 繰り返す前に防ぐ（アカウントチェックと同じ流れ）。
@@ -163,6 +183,7 @@ export function BulkPost() {
         payload,
         intervalSec,
         kind: 'immediate',
+        resolveMedia,
       });
       const doneCount = job.entries.filter((e) => e.status === 'done').length;
       const firstFailure = job.entries.find((e) => e.status === 'failed');

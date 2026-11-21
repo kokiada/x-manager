@@ -33,6 +33,16 @@ const XManagerXClient = {
     'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
   GRAPHQL_BASE: 'https://x.com/i/api/graphql',
   REST_BASE: 'https://api.x.com/1.1',
+  /** メディアアップロード（upload.x.com）の入口。 */
+  UPLOAD_BASE: 'https://upload.x.com/i/media/upload.json',
+  /** APPEND 1回あたりの上限（Xの仕様：5MB）。 */
+  MEDIA_APPEND_CHUNK_BYTES: 5 * 1024 * 1024,
+  /** Xのメディア上限：画像5MB（GIFは15MB）、動画512MB。 */
+  IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  GIF_MAX_BYTES: 15 * 1024 * 1024,
+  VIDEO_MAX_BYTES: 512 * 1024 * 1024,
+  /** 1ポストに付けられる画像の上限（Xの仕様）。動画は1件まで。 */
+  MAX_IMAGES_PER_POST: 4,
 
   /**
    * GraphQL の feature flags。Web 版が送るものの一部で、公開クライアント
@@ -73,22 +83,35 @@ const XManagerXClient = {
     const fetchImpl = deps.fetchImpl;
     const resolveQueryId = deps.resolveQueryId;
     const getTransactionId = deps.getTransactionId || null;
+    // 動画の処理待ち（STATUS 確認）の締切・間隔。既定は60秒・3秒。
+    // テストでは短くできるように deps で差し替えられる。
+    const mediaStatusDeadlineMs =
+      typeof deps.mediaStatusDeadlineMs === 'number' ? deps.mediaStatusDeadlineMs : 60_000;
+    const mediaStatusPollMs =
+      typeof deps.mediaStatusPollMs === 'number' ? deps.mediaStatusPollMs : 3_000;
+    // APPEND 1回あたりのバイト数。既定は X の上限 5MB。
+    const mediaAppendChunkBytes =
+      typeof deps.mediaAppendChunkBytes === 'number'
+        ? deps.mediaAppendChunkBytes
+        : XManagerXClient.MEDIA_APPEND_CHUNK_BYTES;
 
-    function headers(auth, extra) {
+    function headers(auth, extra, json) {
       const h = {
         authorization: `Bearer ${XManagerXClient.BEARER_TOKEN}`,
-        'content-type': 'application/json',
         'x-csrf-token': auth.ct0,
         'x-twitter-auth-type': 'OAuth2Session',
         'x-twitter-active-user': 'yes',
         origin: 'https://x.com',
         referer: 'https://x.com/',
       };
+      // 既定は JSON。FormData（multipart）のときは fetch に境界を
+      // 付けさせるため、content-type を付けない（json=false）。
+      if (json !== false) h['content-type'] = 'application/json';
       if (extra) Object.assign(h, extra);
       return h;
     }
 
-    async function requestJson(url, options, auth, { isWrite }) {
+    async function requestJson(url, options, auth, { isWrite, expectJson }) {
       let res;
       let txAttached = false;
       try {
@@ -142,6 +165,8 @@ const XManagerXClient = {
       if (!res.ok) {
         throw errors.makeError('x_error', `Xからの応答が異常です（HTTP ${res.status}）。`);
       }
+      // APPEND など応答が空の操作は JSON を読まない。
+      if (expectJson === false) return null;
       let json;
       try {
         json = await res.json();
@@ -211,13 +236,16 @@ const XManagerXClient = {
 
     // ---- 書き込み ----
 
-    async function postTweet(auth, { text, replyToId, replyPermission }) {
+    async function postTweet(auth, { text, replyToId, replyPermission, mediaIds }) {
       const variables = {
         tweet_text: text,
         reply: replyToId
           ? { in_reply_to_status_id: replyToId, exclude_reply_user_ids: [] }
           : undefined,
-        media: { media_entities: [], possibly_media: [] },
+        media: {
+          media_entities: (mediaIds || []).map((id) => ({ media_id: id, tagged_users: [] })),
+          possibly_media: [],
+        },
         dark: false,
         semantic_annotation_ids: [],
       };
@@ -233,6 +261,166 @@ const XManagerXClient = {
         throw errors.makeError('x_error', '投稿の応答から投稿IDを読み取れませんでした。');
       }
       return { postId, postUrl: `https://x.com/i/status/${postId}` };
+    }
+
+    // ---- メディアアップロード ----
+
+    /**
+     * Xのメディア上限を検査する。Xの仕様：画像は1ポスト4件まで、
+     * 動画は1件まで、画像と動画の同時添付は不可。画像5MB
+     * （GIFは15MB）、動画512MBまで。守れなければ x_error を投げる。
+     */
+    function validateMediaItems(items) {
+      if (!Array.isArray(items) || items.length === 0) {
+        throw errors.makeError('x_error', '添付するメディアがありません。');
+      }
+      const images = items.filter((i) => i.kind === 'image');
+      const videos = items.filter((i) => i.kind === 'video');
+      if (images.length > 0 && videos.length > 0) {
+        throw errors.makeError('x_error', '画像と動画を同時に付けることはできません。');
+      }
+      if (images.length > XManagerXClient.MAX_IMAGES_PER_POST) {
+        throw errors.makeError(
+          'x_error',
+          `画像は1ポストに${XManagerXClient.MAX_IMAGES_PER_POST}件までです。`,
+        );
+      }
+      if (videos.length > 1) {
+        throw errors.makeError('x_error', '動画は1ポストに1件までです。');
+      }
+      for (const item of items) {
+        if (!item.data || !(item.data instanceof Uint8Array) || item.data.length === 0) {
+          throw errors.makeError(
+            'x_error',
+            `メディア「${item.name || ''}」のデータがありません。もう一度選び直してください。`,
+          );
+        }
+        if (item.kind === 'image') {
+          const max =
+            item.mime === 'image/gif'
+              ? XManagerXClient.GIF_MAX_BYTES
+              : XManagerXClient.IMAGE_MAX_BYTES;
+          if (item.data.length > max) {
+            throw errors.makeError(
+              'x_error',
+              `画像「${item.name}」が大きすぎます（上限${item.mime === 'image/gif' ? '15MB' : '5MB'}）。`,
+            );
+          }
+        } else if (item.kind === 'video') {
+          if (item.data.length > XManagerXClient.VIDEO_MAX_BYTES) {
+            throw errors.makeError(
+              'x_error',
+              `動画「${item.name}」が大きすぎます（上限512MB）。`,
+            );
+          }
+          if (item.mime !== 'video/mp4' && item.mime !== 'video/quicktime') {
+            throw errors.makeError(
+              'x_error',
+              `対応していない動画形式です（${item.mime || '不明'}）。mp4 か mov を使ってください。`,
+            );
+          }
+        } else {
+          throw errors.makeError(
+            'x_error',
+            `対応していないメディアです：${item.name || ''}。`,
+          );
+        }
+      }
+    }
+
+    /** upload.x.com へ URL エンコード形式で送り、JSON応答を返す。 */
+    async function uploadForm(auth, params) {
+      return requestJson(
+        XManagerXClient.UPLOAD_BASE,
+        {
+          method: 'POST',
+          headers: headers(auth, { 'content-type': 'application/x-www-form-urlencoded' }),
+          body: new URLSearchParams(params).toString(),
+        },
+        auth,
+        { isWrite: true },
+      );
+    }
+
+    /** upload.x.com へ1チャンク（multipart）を送る。応答は空でよい。 */
+    async function uploadAppend(auth, mediaId, segmentIndex, bytes, mime) {
+      const form = new FormData();
+      form.append('command', 'APPEND');
+      form.append('media_id', mediaId);
+      form.append('segment_index', String(segmentIndex));
+      form.append('media', new Blob([bytes], { type: mime }));
+      await requestJson(
+        XManagerXClient.UPLOAD_BASE,
+        {
+          method: 'POST',
+          // multipart の境界は fetch に付けさせる（content-type 無し）。
+          headers: headers(auth, undefined, false),
+          body: form,
+        },
+        auth,
+        { isWrite: true, expectJson: false },
+      );
+    }
+
+    /** 動画の処理（processing_info）が終わるまで STATUS を確認する。 */
+    async function waitForVideoReady(auth, mediaId, processingInfo) {
+      let info = processingInfo;
+      const deadline = Date.now() + mediaStatusDeadlineMs;
+      while (info && (info.state === 'pending' || info.state === 'in_progress')) {
+        if (Date.now() > deadline) {
+          throw errors.makeError(
+            'x_error',
+            '動画の処理が時間切れになりました。しばらく待ってから再試行してください。',
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, mediaStatusPollMs));
+        const res = await uploadForm(auth, { command: 'STATUS', media_id: mediaId });
+        info = res ? res.processing_info : null;
+      }
+      if (info && info.state === 'failed') {
+        throw errors.makeError(
+          'x_error',
+          `動画の処理に失敗しました（${info.error?.message || info.error?.name || '原因不明'}）。別のファイルで試してください。`,
+        );
+      }
+    }
+
+    /**
+     * メディアを upload.x.com へ上げ、media_id の一覧を返す。
+     * INIT → APPEND（5MBずつ）→ FINALIZE、動画は STATUS 確認まで。
+     * @param {Array<{name: string, mime: string, kind: 'image'|'video', data: Uint8Array}>} items
+     */
+    async function uploadMedia(auth, items) {
+      validateMediaItems(items);
+      const mediaIds = [];
+      for (const item of items) {
+        const category = item.kind === 'video' ? 'tweet_video' : 'tweet_image';
+        const init = await uploadForm(auth, {
+          command: 'INIT',
+          media_type: item.mime,
+          total_bytes: String(item.data.length),
+          media_category: category,
+        });
+        const mediaId = init ? init.media_id_string : null;
+        if (!mediaId) {
+          throw errors.makeError(
+            'x_error',
+            `メディア「${item.name}」のアップロード開始に失敗しました。`,
+          );
+        }
+        const chunkSize = mediaAppendChunkBytes;
+        const chunks = Math.max(1, Math.ceil(item.data.length / chunkSize));
+        for (let i = 0; i < chunks; i++) {
+          const slice = item.data.subarray(i * chunkSize, (i + 1) * chunkSize);
+          await uploadAppend(auth, mediaId, i, slice, item.mime);
+        }
+        const fin = await uploadForm(auth, { command: 'FINALIZE', media_id: mediaId });
+        if (item.kind === 'video') {
+          await waitForVideoReady(auth, mediaId, fin ? fin.processing_info : null);
+        }
+        mediaIds.push(mediaId);
+      }
+      return mediaIds;
     }
 
     async function deleteTweet(auth, tweetId) {
@@ -413,6 +601,7 @@ const XManagerXClient = {
 
     return {
       postTweet,
+      uploadMedia,
       deleteTweet,
       favoriteTweet,
       retweet,
