@@ -120,11 +120,19 @@ const XManagerXClient = {
           res.status === 401
             ? 'Xのセッションが切れています。ポップアップで auth_token を登録し直してください。'
             : isWrite
-              ? 'Xがこの操作を拒否しました（403）。Xが追加の認証（トランザクションID）を求めている可能性があります。拡張の更新が必要です。'
+              ? 'Xがこの操作を拒否しました（403）。Xが追加の認証（トランザクションID）を求めている可能性があります。現在この認証方式には未対応のため、この操作はできません。対応後に改めてお試しください。'
               : 'Xがこの取得を拒否しました（403）。セッションが無効か、アカウントに制限がかかっている可能性があります。',
         );
         err.status = res.status;
         throw err;
+      }
+      if (res.status === 400 || res.status === 404) {
+        // 操作の query ID が古い（Xの更新で変わった）場合によく出る。
+        // ただの「応答が異常」では原因が分からないので、明示する。
+        throw errors.makeError(
+          'x_error',
+          `Xがこの操作を受け付けませんでした（HTTP ${res.status}）。Xの更新で操作の query ID が変わった可能性があり、拡張の更新が必要です。`,
+        );
       }
       if (!res.ok) {
         throw errors.makeError('x_error', `Xからの応答が異常です（HTTP ${res.status}）。`);

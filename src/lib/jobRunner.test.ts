@@ -181,6 +181,24 @@ describe('runBulkPostJob', () => {
     expect(updates[updates.length - 1]).toEqual(['done', 'done']);
     expect(updates.some((u) => u[0] === 'running')).toBe(true);
   });
+
+  it('onUpdate の失敗（保存の不具合）でジョブ全体が止まらない', async () => {
+    const h = harness();
+    const entries = await runBulkPostJob({
+      accounts: [account('a'), account('b')],
+      payload,
+      intervalSec: 1,
+      wordSets: {},
+      signal: new AbortController().signal,
+      deps: {
+        ...h,
+        onUpdate: () => {
+          throw new Error('保存に失敗しました');
+        },
+      },
+    });
+    expect(entries.map((e) => e.status)).toEqual(['done', 'done']);
+  });
 });
 
 describe('abortableWait', () => {

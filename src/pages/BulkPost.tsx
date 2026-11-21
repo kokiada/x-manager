@@ -11,6 +11,9 @@ import {
   type ReplyPermission,
 } from '../db/types';
 import { createReservation } from '../db/repository';
+import { getExecutorMode } from '../executor';
+import { errorMessageOf } from '../lib/errorMessage';
+import { checkExtensionReady } from '../lib/extensionPrecheck';
 import { createAndRunJob } from '../lib/bulkPostService';
 import { buildPostContent, validateCompose, weightedLength, POST_CHAR_LIMIT } from '../lib/bulkPost';
 import { expandRandomText, findRandomPlaceholders, type RandomWordSets } from '../lib/randomText';
@@ -138,20 +141,44 @@ export function BulkPost() {
     });
   };
 
-  const runNow = () => {
+  const runNow = async () => {
     const v = validateCompose(payload, { accountCount: accountIds.length });
     setErrors(v.errors);
     setWarnings(v.warnings);
     if (v.errors.length > 0) return;
-    void createAndRunJob({ accountIds, payload, intervalSec, kind: 'immediate' }).then((job) => {
-      toast.push(
+    // 拡張モードでは投稿を送る前に疎通確認（接続＋Cookie API）。
+    // ダメならここで止めて理由を出し、1件30秒の時間切れを
+    // 繰り返す前に防ぐ（アカウントチェックと同じ流れ）。
+    if (getExecutorMode() === 'extension') {
+      const ready = await checkExtensionReady();
+      if (!ready.ok) {
+        toast.push(ready.message, 'err');
+        return;
+      }
+    }
+    toast.push('一括投稿を開始しました', 'info');
+    try {
+      const job = await createAndRunJob({
+        accountIds,
+        payload,
+        intervalSec,
+        kind: 'immediate',
+      });
+      const doneCount = job.entries.filter((e) => e.status === 'done').length;
+      const firstFailure = job.entries.find((e) => e.status === 'failed');
+      const summary =
         job.status === 'cancelled'
           ? '一括投稿をキャンセルしました'
-          : `一括投稿が完了しました（${job.entries.filter((e) => e.status === 'done').length}/${job.entries.length}件成功）`,
-        job.status === 'done' ? 'ok' : 'info',
-      );
-    });
-    toast.push('一括投稿を開始しました', 'info');
+          : `一括投稿が完了しました（${doneCount}/${job.entries.length}件成功）`;
+      // 失敗があれば最初の理由をそのまま付ける（件数だけでは
+      // 原因が分からず、履歴タブを見に行く手間が増えるため）。
+      const detail = firstFailure?.error ? `：${firstFailure.error}` : '';
+      toast.push(summary + detail, job.status === 'done' ? 'ok' : 'info');
+    } catch (err) {
+      // createAndRunJob は失敗をジョブに記録して返す設計だが、
+      // 万が一例外が漏れた場合も無言にしない。
+      toast.push(`一括投稿に失敗しました：${errorMessageOf(err, '原因不明のエラー')}`, 'err');
+    }
   };
 
   const reserve = async () => {
@@ -182,7 +209,7 @@ export function BulkPost() {
           </h1>
           <p className="page-lede">
             登録アカウントへ同じ内容を上から順に投稿します。間隔は1〜60秒、テンプレートとランダム文言で
-            文面に揺らぎを持たせられます。実行はシミュレータ Executor 経由です。
+            文面に揺らぎを持たせられます。実行方法は設定画面の「実行方法（X連携）」に従います。
           </p>
         </div>
       </div>

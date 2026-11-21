@@ -922,6 +922,149 @@ describe('取得系（dispatch + xClient）', () => {
   });
 });
 
+describe('投稿の失敗が見える形で返る（再現テスト）', () => {
+  it('バンドル走査が遅くても締切までにフォールバック付きで返す', async () => {
+    const chromeStub = makeChromeStub();
+    // トップページの取得が永遠に終わらない（現実には遅い回線・X側の遅延）。
+    const fetchStub = () => new Promise(() => {});
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const started = Date.now();
+    const ids = await sandbox.XManagerQueryIds.resolve({
+      fetchImpl: fetchStub,
+      storage: chromeStub.storage.local,
+      scanDeadlineMs: 100,
+      timeouts: { homeMs: 50, bundleMs: 50 },
+    });
+    // 締切を大幅に超えて待たされないこと（アプリ側の30秒タイムアウト内）。
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(ids.CreateTweet).toBe('bDE2rBtZb3uyrczSZ_pI9g');
+  });
+
+  it('並行する解決は1回の走査を共有する', async () => {
+    const chromeStub = makeChromeStub();
+    let homeCalls = 0;
+    const fetchStub = makeFetchStub([
+      {
+        match: (url) => url === 'https://x.com/',
+        handle: () => {
+          homeCalls += 1;
+          return textResponse(
+            200,
+            '<script src="https://abs.twimg.com/responsive-web/client-web/main.a.js"></script>',
+          );
+        },
+      },
+      {
+        match: (url) => url.includes('main.a.js'),
+        handle: () => textResponse(200, '"/i/api/graphql/AAA/CreateTweet"'),
+      },
+    ]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const deps = { fetchImpl: fetchStub, storage: chromeStub.storage.local };
+    const [a, b] = await Promise.all([
+      sandbox.XManagerQueryIds.resolve(deps),
+      sandbox.XManagerQueryIds.resolve(deps),
+    ]);
+    expect(a.CreateTweet).toBe('AAA');
+    expect(b.CreateTweet).toBe('AAA');
+    expect(homeCalls).toBe(1);
+  });
+
+  it('終わらないジョブがあってもキューは詰まらない（タイムアウトで切る）', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const never = new Promise(() => {});
+    await expect(
+      sandbox.XManagerSession.withSession(
+        'a',
+        async () => never,
+        { sessions, chrome: chromeStub, fetchImpl: fetchStub, queueTimeoutMs: 100 },
+      ),
+    ).rejects.toMatchObject({ message: expect.stringContaining('時間切れ') });
+    // キューが詰まっていない：次のジョブは普通に動く。
+    const seen = await sandbox.XManagerSession.withSession(
+      'a',
+      async (auth: AnyRecord) => auth.ct0,
+      { sessions, chrome: chromeStub, fetchImpl: fetchStub },
+    );
+    expect(seen).toBe('ct0-a');
+  });
+
+  it('ct0取得の fetch が終わらなくてもタイムアウトして失敗する', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = () => new Promise(() => {});
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice' },
+    });
+    await expect(
+      sandbox.XManagerSession.withSession(
+        'a',
+        async (auth: AnyRecord) => auth.ct0,
+        { sessions, chrome: chromeStub, fetchImpl: fetchStub, ct0TimeoutMs: 100 },
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('ct0') });
+  });
+
+  it('書き込みの403は「未対応」と分かる文言で返す', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([
+      { match: GRAPHQL('CreateTweet'), handle: () => jsonResponse(403, {}) },
+    ]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({ sessions, chrome: chromeStub, fetch: fetchStub });
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'j-403',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: { content: { text: 'x' } },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'x_error',
+      message: expect.stringContaining('未対応'),
+    });
+  });
+
+  it('GraphQL の 400 は query ID が古い可能性を伝える', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([
+      { match: GRAPHQL('CreateTweet'), handle: () => jsonResponse(400, {}) },
+    ]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({ sessions, chrome: chromeStub, fetch: fetchStub });
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'j-400',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: { content: { text: 'x' } },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'x_error',
+      message: expect.stringContaining('query ID'),
+    });
+  });
+});
+
 describe('background の配線', () => {
   type BgListener = (
     message: unknown,
@@ -943,6 +1086,8 @@ describe('background の配線', () => {
       console,
       chrome: chromeStub,
       fetch: fetchStub,
+      setTimeout,
+      clearTimeout,
     };
     sandbox.self = sandbox;
     const ctx = createContext(sandbox);

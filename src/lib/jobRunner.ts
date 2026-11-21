@@ -76,7 +76,13 @@ export async function runBulkPostJob(input: RunBulkPostInput): Promise<PostJobEn
     : pendingEntries(accounts);
   const byId = new Map(entries.map((e) => [e.accountId, e]));
   const emit = async () => {
-    await deps.onUpdate?.(entries.map((e) => ({ ...e })));
+    try {
+      await deps.onUpdate?.(entries.map((e) => ({ ...e })));
+    } catch {
+      // 進捗の保存に失敗しても投稿そのものは止めない（保存の不具合で
+      // ジョブ全体が「実行中」のまま残る、という無言の停止を防ぐ）。
+      // 最終結果は createAndRunJob が保存し直す。
+    }
   };
 
   for (let i = 0; i < accounts.length; i++) {

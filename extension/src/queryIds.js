@@ -15,6 +15,13 @@
  * 解決結果は chrome.storage.local に24時間キャッシュする。
  * 見つからなかった操作は null を返し、呼び出し側が
  * not_implemented として扱う（成功を偽らない）。
+ *
+ * 走査の時間制限：アプリ側のジョブタイムアウトは30秒なので、
+ * 走査は締切（既定15秒）までに打ち切り、見つかった分と
+ * フォールバックで返す。締切を過ぎてからも走査し続けて
+ * ジョブ全体を時間切れにする、ということが無いようにする。
+ * 並行する解決は1回の走査を共有する（同じタイミングで複数の
+ * ジョブが走っても、x.com への取得が重ならない）。
  */
 'use strict';
 
@@ -47,21 +54,55 @@ const XManagerQueryIds = {
   STORAGE_KEY: 'xmanager.queryIds.v1',
   TTL_MS: 24 * 60 * 60 * 1000,
 
-  /** 全操作の query ID を返す（キャッシュ→ライブ解決→フォールバック）。 */
+  /** 走査の締切（既定15秒）。アプリ側の30秒タイムアウトに収まる。 */
+  SCAN_DEADLINE_MS: 15_000,
+  /** トップページ取得のタイムアウト。 */
+  HOME_FETCH_TIMEOUT_MS: 8_000,
+  /** バンドル1個の取得タイムアウト。 */
+  BUNDLE_FETCH_TIMEOUT_MS: 5_000,
+
+  /** 進行中の走査（並行する解決が共有する）。 */
+  inflight: null,
+
+  /**
+   * 全操作の query ID を返す（キャッシュ→ライブ解決→フォールバック）。
+   * deps には scanDeadlineMs（締切）と timeouts {homeMs, bundleMs} を
+   * 渡せる（テスト用。未指定なら既定値）。
+   */
   async resolve(deps) {
     const cached = await this.readCache(deps.storage).catch(() => null);
     if (cached && Date.now() - cached.fetchedAt < this.TTL_MS) {
       return { ...this.FALLBACK_IDS, ...cached.ids };
     }
-    let found = {};
+    if (this.inflight) return this.inflight;
+    const deadlineMs =
+      typeof deps.scanDeadlineMs === 'number' ? deps.scanDeadlineMs : this.SCAN_DEADLINE_MS;
+    const timeouts = deps.timeouts || {};
+    const scan = (async () => {
+      let found = {};
+      try {
+        found = await this.scanBundles(deps.fetchImpl, {
+          deadline: Date.now() + deadlineMs,
+          homeMs:
+            typeof timeouts.homeMs === 'number' ? timeouts.homeMs : this.HOME_FETCH_TIMEOUT_MS,
+          bundleMs:
+            typeof timeouts.bundleMs === 'number'
+              ? timeouts.bundleMs
+              : this.BUNDLE_FETCH_TIMEOUT_MS,
+        });
+      } catch {
+        found = {};
+      }
+      const ids = { ...this.FALLBACK_IDS, ...found };
+      await this.writeCache(deps.storage, ids).catch(() => {});
+      return ids;
+    })();
+    this.inflight = scan;
     try {
-      found = await this.scanBundles(deps.fetchImpl);
-    } catch {
-      found = {};
+      return await scan;
+    } finally {
+      if (this.inflight === scan) this.inflight = null;
     }
-    const ids = { ...this.FALLBACK_IDS, ...found };
-    await this.writeCache(deps.storage, ids).catch(() => {});
-    return ids;
   },
 
   /** 1操作分の query ID。見つからなければ null。 */
@@ -84,10 +125,18 @@ const XManagerQueryIds = {
   /**
    * x.com のトップページから JS バンドルを探し、query ID を走査する。
    * バンドルは最大8個まで、全部の操作が見つかった時点で打ち切る。
+   * 締切（opts.deadline）を過ぎたら新しいバンドルの取得は止め、
+   * ここまでに見つかった分だけを返す（フォールバックと合わせて使う）。
    */
-  async scanBundles(fetchImpl) {
+  async scanBundles(fetchImpl, opts = {}) {
+    const deadline =
+      typeof opts.deadline === 'number' ? opts.deadline : Date.now() + this.SCAN_DEADLINE_MS;
+    const homeMs =
+      typeof opts.homeMs === 'number' ? opts.homeMs : this.HOME_FETCH_TIMEOUT_MS;
+    const bundleMs =
+      typeof opts.bundleMs === 'number' ? opts.bundleMs : this.BUNDLE_FETCH_TIMEOUT_MS;
     const found = {};
-    const homeRes = await fetchWithTimeout(fetchImpl, 'https://x.com/', 15_000);
+    const homeRes = await fetchWithTimeout(fetchImpl, 'https://x.com/', homeMs);
     const html = await homeRes.text();
     const chunkUrls = [
       ...new Set(
@@ -97,8 +146,9 @@ const XManagerQueryIds = {
       ),
     ].slice(0, 8);
     for (const url of chunkUrls) {
+      if (Date.now() > deadline) break;
       try {
-        const res = await fetchWithTimeout(fetchImpl, url, 15_000);
+        const res = await fetchWithTimeout(fetchImpl, url, bundleMs);
         if (!res.ok) continue;
         const js = await res.text();
         for (const m of js.matchAll(/\/i\/api\/graphql\/([A-Za-z0-9_-]+)\/([A-Za-z]+)/g)) {
@@ -117,10 +167,20 @@ const XManagerQueryIds = {
 };
 
 async function fetchWithTimeout(fetchImpl, url, timeoutMs) {
+  // signal だけでは足りない（signal を無視する実装だと永遠に
+  // 待つ）ため、Promise.race でも締切を付ける。
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer;
   try {
-    return await fetchImpl(url, { signal: controller.signal });
+    return await Promise.race([
+      fetchImpl(url, { signal: controller.signal }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`fetch timeout: ${url}`));
+        }, timeoutMs);
+      }),
+    ]);
   } finally {
     clearTimeout(timer);
   }

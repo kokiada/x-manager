@@ -81,6 +81,7 @@ export async function createAndRunJob(req: RunJobRequest): Promise<PostJob> {
 
   const controller = new AbortController();
   controllers.set(job.id, controller);
+  let finalJob: PostJob = job;
   try {
     const wordSets = await getRandomWordSets();
     const entries = await runBulkPostJob({
@@ -100,15 +101,41 @@ export async function createAndRunJob(req: RunJobRequest): Promise<PostJob> {
       },
     });
     const cancelled = controller.signal.aborted;
+    const status = cancelled ? 'cancelled' : summarizeJobStatus(entries);
     await updatePostJob(job.id, {
       entries,
-      status: cancelled ? 'cancelled' : summarizeJobStatus(entries),
+      status,
       finishedAt: Date.now(),
     });
+    finalJob =
+      (await getPostJob(job.id)) ?? { ...job, entries, status, finishedAt: Date.now() };
+  } catch (err) {
+    // ランナー外の予期せぬ失敗（保存の読み取り・書き込みの失敗など）
+    // でも、ジョブを「実行中」のまま残さない。未完了のエントリを
+    // 失敗として記録し、状態を partial で締める。例外はここで吸収し、
+    // 呼び出し元の完了トーストが出るようにする（無言の停止にしない）。
+    const message =
+      err instanceof Error && err.message.trim()
+        ? err.message
+        : '一括投稿に失敗しました';
+    const latest = await getPostJob(job.id).catch(() => undefined);
+    const base = latest ?? job;
+    const entries = base.entries.map((e) =>
+      e.status === 'pending' || e.status === 'running'
+        ? { ...e, status: 'failed' as const, error: message, at: Date.now() }
+        : e,
+    );
+    const status = summarizeJobStatus(entries);
+    try {
+      await updatePostJob(job.id, { entries, status, finishedAt: Date.now() });
+    } catch {
+      // 保存自体が壊れている場合は、メモリ上の結果だけ返す。
+    }
+    finalJob = { ...base, entries, status, finishedAt: Date.now() };
   } finally {
     controllers.delete(job.id);
   }
-  return (await getPostJob(job.id)) ?? job;
+  return finalJob;
 }
 
 /**
