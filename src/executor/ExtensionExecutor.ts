@@ -115,12 +115,16 @@ export class ExtensionExecutor implements Executor {
     }
     const data = result.data ?? {};
     const status = typeof data.status === 'string' ? data.status : 'connection_error';
+    // 拡張は取れなかった数を -1（不明）で返す。その場合はアプリ側の
+    // 保存済みの値を残し、0 で上書きしてしまわないようにする。
+    const numOr = (v: unknown, fallback: number): number =>
+      typeof v === 'number' && v >= 0 ? v : fallback;
     return {
       accountId: account.id,
       status: status as AccountCheckResult['status'],
-      notifications: typeof data.notifications === 'number' ? data.notifications : 0,
-      dmCount: typeof data.dmCount === 'number' ? data.dmCount : 0,
-      followers: typeof data.followers === 'number' ? data.followers : account.followers,
+      notifications: numOr(data.notifications, account.notifications),
+      dmCount: numOr(data.dmCount, account.dmCount),
+      followers: numOr(data.followers, account.followers),
       checkedAt: result.at ?? at,
     };
   }

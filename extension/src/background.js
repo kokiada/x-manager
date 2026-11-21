@@ -1,18 +1,34 @@
 /**
  * x-manager 実行役 — background service worker。
  *
- * アプリ（content script 経由）からのメッセージを受け、結果を返す。
- * この段階では実行そのものは未実装で、受付の応答（receipt）だけ返す。
- * 次の段階でここに X Web API 呼び出し（セッション切替＋実行）が入る。
+ * アプリ（content script 経由）からのメッセージを受け、X Web版内部APIで
+ * 実際に実行して結果を返す。セッションの切替は session.js が直列化し、
+ * 実行の振分は dispatch.js が行う。トークンはここから出ない
+ * （x.com への Cookie / ヘッダとしてのみ使う）。
  */
 'use strict';
 
-/* global chrome, importScripts, XManagerProtocol, XManagerSessions */
+/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerQueryIds, XManagerDispatch, XManagerErrors */
 
-importScripts('protocol.js', 'sessionStore.js');
+importScripts(
+  'protocol.js',
+  'errors.js',
+  'sessionStore.js',
+  'queryIds.js',
+  'session.js',
+  'xClient.js',
+  'dispatch.js',
+);
 
-const NOT_IMPLEMENTED =
-  'この操作はまだ拡張機能で実装されていません。次の段階で対応します。';
+function resultMessage(jobId, outcome) {
+  return {
+    source: XManagerProtocol.EXTENSION_SOURCE,
+    kind: 'result',
+    id: jobId,
+    ...outcome,
+    at: Date.now(),
+  };
+}
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') {
@@ -52,42 +68,63 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // 非同期で sendResponse する
   }
 
-  // 実行ジョブ：この段階では受付だけ返し、実行はしない。
+  // 実行ジョブ：セッションを確認してから dispatch へ。
   if (message.kind === 'job' && message.source === XManagerProtocol.PAGE_SOURCE) {
+    if (!XManagerProtocolHelpers.isJobMessage(message)) {
+      sendResponse(
+        resultMessage(typeof message.id === 'string' ? message.id : 'unknown', {
+          ok: false,
+          code: 'unknown',
+          error: '不正なジョブです。',
+        }),
+      );
+      return false;
+    }
+    const ctx = {
+      sessions: XManagerSessions,
+      chrome,
+      fetchImpl: fetch,
+      resolveQueryId: (op) =>
+        XManagerQueryIds.getQueryId(op, {
+          fetchImpl: fetch,
+          storage: chrome.storage.local,
+        }),
+      // x-client-transaction-id の生成器はまだ無い（後で差し込むための口）。
+      getTransactionId: null,
+    };
     XManagerSessions.get(message.accountId)
       .then((session) => {
         if (!session) {
-          sendResponse({
-            source: XManagerProtocol.EXTENSION_SOURCE,
-            kind: 'result',
-            id: message.id,
-            ok: false,
-            code: 'no_session',
-            error: 'このアカウントは拡張に連携されていません。ポップアップから auth_token を登録してください。',
-            at: Date.now(),
-          });
+          sendResponse(
+            resultMessage(message.id, {
+              ok: false,
+              code: 'no_session',
+              error:
+                'このアカウントは拡張に連携されていません。ポップアップから auth_token を登録してください。',
+            }),
+          );
           return;
         }
-        sendResponse({
-          source: XManagerProtocol.EXTENSION_SOURCE,
-          kind: 'result',
-          id: message.id,
-          ok: false,
-          code: 'not_implemented',
-          error: NOT_IMPLEMENTED,
-          at: Date.now(),
-        });
+        return XManagerDispatch.handleJob(message, ctx).then(
+          (data) => sendResponse(resultMessage(message.id, { ok: true, data })),
+          (err) =>
+            sendResponse(
+              resultMessage(message.id, {
+                ok: false,
+                code: XManagerErrors.codeOf(err),
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            ),
+        );
       })
       .catch((err) => {
-        sendResponse({
-          source: XManagerProtocol.EXTENSION_SOURCE,
-          kind: 'result',
-          id: message.id,
-          ok: false,
-          code: 'unknown',
-          error: err instanceof Error ? err.message : String(err),
-          at: Date.now(),
-        });
+        sendResponse(
+          resultMessage(message.id, {
+            ok: false,
+            code: 'unknown',
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
       });
     return true; // 非同期で sendResponse する
   }

@@ -49,6 +49,19 @@ const XManagerSessions = {
     delete sessions[accountId];
     await chrome.storage.local.set({ [STORAGE_KEY]: sessions });
   },
+
+  /**
+   * 取得した ct0 をセッションに追記する（次回の実行で使い回す）。
+   * セッション自体が無ければ何もしない。ct0 は auth_token と同じ
+   * 保管庫（chrome.storage.local）にだけ置く。
+   */
+  async setCt0(accountId, ct0) {
+    const stored = await chrome.storage.local.get(STORAGE_KEY);
+    const sessions = stored[STORAGE_KEY] || {};
+    if (!sessions[accountId]) return;
+    sessions[accountId] = { ...sessions[accountId], ct0 };
+    await chrome.storage.local.set({ [STORAGE_KEY]: sessions });
+  },
 };
 
 if (typeof self !== 'undefined') {

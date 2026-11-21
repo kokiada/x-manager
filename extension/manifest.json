@@ -1,1 +1,38 @@
-{"action":{"default_popup":"src/popup.html","default_title":"x-manager 実行役"},"background":{"service_worker":"src/background.js"},"content_scripts":[{"js":["src/protocol.js","src/content.js"],"matches":["http://localhost/*","http://127.0.0.1/*","https://*.muse.ai/*"],"run_at":"document_idle"}],"description":"x-manager コンソールの実行役。アカウントごとのセッションを持ち、Xへの実操作を行う。","host_permissions":["https://x.com/*","https://twitter.com/*"],"manifest_version":3,"name":"x-manager 実行役","permissions":["cookies","storage","tabs"],"version":"0.1.0"}
+{
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "x-manager 実行役"
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "src/protocol.js",
+        "src/content.js"
+      ],
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://*.muse.ai/*"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "description": "x-manager コンソールの実行役。アカウントごとのセッションを持ち、Xへの実操作を行う。",
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://api.x.com/*",
+    "https://abs.twimg.com/*"
+  ],
+  "manifest_version": 3,
+  "name": "x-manager 実行役",
+  "permissions": [
+    "cookies",
+    "storage",
+    "tabs"
+  ],
+  "version": "0.1.0"
+}
