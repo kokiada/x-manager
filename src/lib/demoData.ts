@@ -2,6 +2,7 @@ import { db } from '../db/db';
 import type { Account } from '../db/types';
 import {
   SEED_ACCOUNTS,
+  SEED_EMAILS,
   SEED_GROUPS,
   SEED_PROXY_GROUPS,
   SEED_RANDOM_WORD_SETS,
@@ -38,6 +39,7 @@ const SEED_GROUP_IDS = new Set(SEED_GROUPS.map((g) => g.id));
 const SEED_PROXY_GROUP_IDS = new Set(SEED_PROXY_GROUPS.map((p) => p.id));
 const SEED_TEMPLATE_GROUP_IDS = new Set(SEED_TEMPLATE_GROUPS.map((g) => g.id));
 const SEED_TEMPLATE_IDS = new Set(SEED_TEMPLATES.map((t) => t.id));
+const SEED_EMAIL_IDS = new Set(SEED_EMAILS.map((e) => e.id));
 const SEED_WORD_SETS = new Map(
   SEED_RANDOM_WORD_SETS.map((s) => [s.no, s.words] as const),
 );
@@ -96,6 +98,7 @@ export interface DemoCleanupResult {
   autoActionEventsRemoved: number;
   autoPostRulesRemoved: number;
   autoPostRunsRemoved: number;
+  emailsRemoved: number;
 }
 
 /**
@@ -123,6 +126,7 @@ export async function clearDemoData(): Promise<DemoCleanupResult> {
     autoActionEventsRemoved: 0,
     autoPostRulesRemoved: 0,
     autoPostRunsRemoved: 0,
+    emailsRemoved: 0,
   };
 
   const demoAccountIds = new Set(
@@ -144,6 +148,13 @@ export async function clearDemoData(): Promise<DemoCleanupResult> {
         .where('id')
         .anyOf([...demoAccountIds])
         .delete();
+
+      // A real account linked to a demo mail address is unlinked
+      // (its emailId is cleared); the account itself is kept.
+      await db.accounts
+        .where('emailId')
+        .anyOf([...SEED_EMAIL_IDS])
+        .modify({ emailId: null });
 
       // A demo group / proxy group survives only if a real account
       // still references it (e.g. the user moved their own account
@@ -172,13 +183,18 @@ export async function clearDemoData(): Promise<DemoCleanupResult> {
     },
   );
 
-  // 1b) Seed-only templates / template groups / word sets.
+  // 1b) Seed-only templates / template groups / word sets / mail.
   await db.transaction(
     'rw',
     db.templates,
     db.templateGroups,
     db.randomWordSets,
+    db.emailAddresses,
     async () => {
+      result.emailsRemoved = await db.emailAddresses
+        .where('id')
+        .anyOf([...SEED_EMAIL_IDS])
+        .delete();
       result.templatesRemoved = await db.templates
         .where('id')
         .anyOf([...SEED_TEMPLATE_IDS])

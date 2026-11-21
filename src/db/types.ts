@@ -61,6 +61,48 @@ export interface ProxyGroup {
   createdAt: number;
 }
 
+/* ====================== mail ledger (EMAIL_DESIGN.md) ====================== */
+
+/**
+ * Mail provider. Listed Gmail / Outlook first: they are the priority
+ * targets for the inbox check (docs/EMAIL_DESIGN.md).
+ */
+export type EmailProvider = 'gmail' | 'outlook' | 'yahoo' | 'other';
+
+export const EMAIL_PROVIDERS: EmailProvider[] = ['gmail', 'outlook', 'yahoo', 'other'];
+
+export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
+  gmail: 'Gmail',
+  outlook: 'Outlook',
+  yahoo: 'Yahoo!メール',
+  other: 'その他',
+};
+
+/** IMAP server preset for the inbox check (docs/EMAIL_DESIGN.md). */
+export const EMAIL_IMAP_PRESETS: Record<
+  EmailProvider,
+  { host: string; port: number } | null
+> = {
+  gmail: { host: 'imap.gmail.com', port: 993 },
+  outlook: { host: 'outlook.office365.com', port: 993 },
+  yahoo: { host: 'imap.mail.yahoo.com', port: 993 },
+  other: null,
+};
+
+/** One managed mail address (the mail ledger). */
+export interface EmailAddress {
+  id: string;
+  /** Full address, e.g. example@gmail.com. */
+  address: string;
+  /** Operator's label / memo, e.g. メイン運用. */
+  label?: string;
+  provider: EmailProvider;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type NewEmailAddress = Omit<EmailAddress, 'id' | 'createdAt' | 'updatedAt'>;
+
 export interface Account {
   id: string;
   /** X handle without the leading @. */
@@ -69,6 +111,8 @@ export interface Account {
   groupId: string | null;
   /** At most one proxy group per account (XBoard spec). */
   proxyGroupId: string | null;
+  /** Linked mail address (mail ledger), if any. */
+  emailId?: string | null;
   status: AccountStatus;
   /**
    * X auth_token (40-char cookie value) used for token login.

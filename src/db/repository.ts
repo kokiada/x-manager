@@ -9,9 +9,11 @@ import type {
   AutoPostRun,
   BanCheckResult,
   BulkAction,
+  EmailAddress,
   FollowerHistory,
   Group,
   NewAccount,
+  NewEmailAddress,
   NewTemplate,
   NotificationItem,
   PostAnalytics,
@@ -58,6 +60,50 @@ export async function updateAccount(
 
 export async function deleteAccount(id: string): Promise<void> {
   await db.accounts.delete(id);
+}
+
+/* --------------------------- mail ledger ------------------------------ */
+
+export async function listEmailAddresses(): Promise<EmailAddress[]> {
+  const all = await db.emailAddresses.toArray();
+  return all.sort((a, b) => a.address.localeCompare(b.address));
+}
+
+export async function getEmailAddress(id: string): Promise<EmailAddress | undefined> {
+  return db.emailAddresses.get(id);
+}
+
+export async function createEmailAddress(
+  input: NewEmailAddress,
+): Promise<EmailAddress> {
+  const now = Date.now();
+  const row: EmailAddress = { ...input, id: uid(), createdAt: now, updatedAt: now };
+  await db.emailAddresses.add(row);
+  return row;
+}
+
+export async function updateEmailAddress(
+  id: string,
+  patch: Partial<Omit<EmailAddress, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.emailAddresses.update(id, { ...patch, updatedAt: Date.now() });
+}
+
+/**
+ * Delete a mail address. Accounts linked to it are unlinked
+ * (emailId -> null) — the accounts themselves are never deleted.
+ */
+export async function deleteEmailAddress(id: string): Promise<void> {
+  await db.transaction('rw', db.accounts, db.emailAddresses, async () => {
+    await db.accounts.where('emailId').equals(id).modify({ emailId: null });
+    await db.emailAddresses.delete(id);
+  });
+}
+
+/** Accounts linked to one mail address (mail ledger screen). */
+export async function listAccountsByEmail(emailId: string): Promise<Account[]> {
+  const all = await db.accounts.where('emailId').equals(emailId).toArray();
+  return all.sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
 /* ------------------------------- groups ------------------------------- */
@@ -407,6 +453,7 @@ const ALL_TABLES = [
   db.autoPostRules,
   db.autoPostRuns,
   db.meta,
+  db.emailAddresses,
 ] as const;
 
 /** Snapshot every table (plus settings) for a full backup. */
@@ -431,6 +478,7 @@ export async function exportAllTables(): Promise<BackupTables> {
     autoPostRules,
     autoPostRuns,
     meta,
+    emailAddresses,
   ] = await Promise.all([
     db.groups.toArray(),
     db.proxyGroups.toArray(),
@@ -451,6 +499,7 @@ export async function exportAllTables(): Promise<BackupTables> {
     db.autoPostRules.toArray(),
     db.autoPostRuns.toArray(),
     db.meta.toArray(),
+    db.emailAddresses.toArray(),
   ]);
   const settingsRow = await db.settings.get('app');
   return {
@@ -474,6 +523,7 @@ export async function exportAllTables(): Promise<BackupTables> {
     autoPostRules,
     autoPostRuns,
     meta,
+    emailAddresses,
   };
 }
 
@@ -505,6 +555,7 @@ export async function replaceAllTables(tables: BackupTables): Promise<void> {
     if ((tables.autoPostRules ?? []).length) await db.autoPostRules.bulkAdd(tables.autoPostRules!);
     if ((tables.autoPostRuns ?? []).length) await db.autoPostRuns.bulkAdd(tables.autoPostRuns!);
     if ((tables.meta ?? []).length) await db.meta.bulkAdd(tables.meta!);
+    if ((tables.emailAddresses ?? []).length) await db.emailAddresses.bulkAdd(tables.emailAddresses!);
   });
 }
 
@@ -519,6 +570,8 @@ export interface MergeResult {
   addedNotifications: number;
   addedPostAnalytics: number;
   addedPostTracking: number;
+  /** Mail addresses linked to the merged accounts. */
+  addedEmailAddresses: number;
 }
 
 /**
@@ -537,6 +590,7 @@ export async function mergeGroupTables(subset: BackupTables): Promise<MergeResul
     addedNotifications: 0,
     addedPostAnalytics: 0,
     addedPostTracking: 0,
+    addedEmailAddresses: 0,
   };
   // Dexie's typed transaction() caps its table arguments, so the
   // merge runs as two transactions: core rows first, then the
@@ -594,6 +648,9 @@ export async function mergeGroupTables(subset: BackupTables): Promise<MergeResul
       await mergeRows(db.postTracking, subset.postTracking, 'addedPostTracking');
     },
   );
+  await db.transaction('rw', db.emailAddresses, async () => {
+    await mergeRows(db.emailAddresses, subset.emailAddresses, 'addedEmailAddresses');
+  });
   return result;
 }
 

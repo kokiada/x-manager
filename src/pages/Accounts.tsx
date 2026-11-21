@@ -27,6 +27,11 @@ export function Accounts() {
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], undefined);
   const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), [], []);
   const proxyGroups = useLiveQuery(() => db.proxyGroups.toArray(), [], []);
+  const emails = useLiveQuery(() => db.emailAddresses.toArray(), [], []);
+  const emailById = useMemo(
+    () => new Map((emails ?? []).map((e) => [e.id, e] as const)),
+    [emails],
+  );
 
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
@@ -207,6 +212,14 @@ export function Accounts() {
               <span className="acct-name">{a.displayName}</span>
               <br />
               <span className="acct-handle">@{a.handle}</span>
+              {a.emailId && emailById.get(a.emailId) && (
+                <>
+                  <br />
+                  <span className="mono faded" style={{ fontSize: 11.5 }}>
+                    ✉ {emailById.get(a.emailId)!.address}
+                  </span>
+                </>
+              )}
             </span>
             <span className="cell-nums acct-nums">
               <span>
@@ -269,6 +282,7 @@ export function Accounts() {
           <AccountForm
             groups={groups ?? []}
             proxyGroups={proxyGroups ?? []}
+            emails={emails ?? []}
             onSubmit={submitForm}
             onCancel={() => setModal({ kind: 'none' })}
           />
@@ -280,6 +294,7 @@ export function Accounts() {
             initial={modal.account}
             groups={groups ?? []}
             proxyGroups={proxyGroups ?? []}
+            emails={emails ?? []}
             onSubmit={submitForm}
             onCancel={() => setModal({ kind: 'none' })}
           />

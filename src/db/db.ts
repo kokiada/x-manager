@@ -7,6 +7,7 @@ import type {
   AutoPostRun,
   BanCheckResult,
   BulkAction,
+  EmailAddress,
   FollowerHistory,
   Group,
   MetaRow,
@@ -48,6 +49,7 @@ export const db = new Dexie('x-manager') as Dexie & {
   autoPostRules: EntityTable<AutoPostRule, 'id'>;
   autoPostRuns: EntityTable<AutoPostRun, 'id'>;
   meta: EntityTable<MetaRow, 'key'>;
+  emailAddresses: EntityTable<EmailAddress, 'id'>;
 };
 
 db.version(1).stores({
@@ -83,4 +85,10 @@ db.version(4).stores({
   autoPostRules: 'id, createdAt',
   autoPostRuns: 'id, ruleId, at',
   meta: 'key',
+});
+
+/* Mail ledger (docs/EMAIL_DESIGN.md): email addresses + account link. */
+db.version(5).stores({
+  emailAddresses: 'id, address, provider',
+  accounts: 'id, handle, groupId, proxyGroupId, status, emailId',
 });

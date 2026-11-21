@@ -15,6 +15,7 @@ import { BulkAction } from './pages/BulkAction';
 import { BulkPost } from './pages/BulkPost';
 import { Dashboard } from './pages/Dashboard';
 import { DataManagement } from './pages/DataManagement';
+import { Emails } from './pages/Emails';
 import { Inbox } from './pages/Inbox';
 import { Settings } from './pages/Settings';
 
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="/inbox" element={<Inbox />} />
               <Route path="/data" element={<DataManagement />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/emails" element={<Emails />} />
             </Routes>
           )}
         </AppShell>

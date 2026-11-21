@@ -12,7 +12,7 @@ export interface Section {
   description: string;
 }
 
-/** The 10 sections of DESIGN.md §5, in order. */
+/** The sections of DESIGN.md §5, in order, plus the mail ledger. */
 export const SECTIONS: Section[] = [
   { no: '01', path: '/', label: 'ダッシュボード', glyph: '▦', milestone: 'M1', ready: true, description: 'アカウント状態サマリと要対応アラート' },
   { no: '02', path: '/accounts', label: 'アカウント', glyph: '𝕏', milestone: 'M1', ready: true, description: 'アカウント台帳・グループ・プロキシ割当' },
@@ -24,6 +24,7 @@ export const SECTIONS: Section[] = [
   { no: '08', path: '/inbox', label: '通知 / DM', glyph: '✉', milestone: 'M4', ready: true, description: '全アカウントの通知とDMの集約' },
   { no: '09', path: '/data', label: 'データ管理', glyph: '⇅', milestone: 'M5', ready: true, description: 'CSV入出力・バックアップ・端末同期' },
   { no: '10', path: '/settings', label: '設定', glyph: '⚙', milestone: 'M5', ready: true, description: 'プラン・同時保持数・定期チェック設定' },
+  { no: '11', path: '/emails', label: 'メールアドレス', glyph: '＠', milestone: 'M6', ready: true, description: 'メールアドレス台帳・アカウントとの紐づけ' },
 ];
 
 const PRIMARY_TABS = [SECTIONS[0], SECTIONS[1], SECTIONS[3], SECTIONS[5]];

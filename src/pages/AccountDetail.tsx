@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { db } from '../db/db';
 import type { NewAccount } from '../db/types';
-import { SEARCH_BAN_LABELS } from '../db/types';
+import { EMAIL_PROVIDER_LABELS, SEARCH_BAN_LABELS } from '../db/types';
 import { deleteAccount, recordFollowerHistory, updateAccount } from '../db/repository';
 import { runSingleBanCheck } from '../lib/banCheckService';
 import { executor } from '../executor';
@@ -26,6 +26,10 @@ export function AccountDetail() {
   );
   const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), [], []);
   const proxyGroups = useLiveQuery(() => db.proxyGroups.toArray(), [], []);
+  const emails = useLiveQuery(() => db.emailAddresses.toArray(), [], []);
+  const linkedEmail = account
+    ? (emails ?? []).find((e) => e.id === account.emailId)
+    : undefined;
 
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<'check' | 'ban' | null>(null);
@@ -181,6 +185,22 @@ export function AccountDetail() {
           </div>
         </div>
         <div className="detail-cell">
+          <div className="k">メールアドレス</div>
+          <div className="v mono" style={{ fontSize: 13 }}>
+            {linkedEmail ? (
+              <>
+                {linkedEmail.address}
+                <div className="faded" style={{ fontSize: 12.5 }}>
+                  {linkedEmail.label ? `${linkedEmail.label} ・ ` : ''}
+                  {EMAIL_PROVIDER_LABELS[linkedEmail.provider]}
+                </div>
+              </>
+            ) : (
+              <span className="faded">未設定</span>
+            )}
+          </div>
+        </div>
+        <div className="detail-cell">
           <div className="k">auth_token</div>
           <div className="v mono">{maskToken(account.authToken)}</div>
         </div>
@@ -209,6 +229,7 @@ export function AccountDetail() {
             initial={account}
             groups={groups ?? []}
             proxyGroups={proxyGroups ?? []}
+            emails={emails ?? []}
             onSubmit={submitEdit}
             onCancel={() => setEditing(false)}
           />

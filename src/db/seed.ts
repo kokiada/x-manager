@@ -1,6 +1,7 @@
 import { db } from './db';
 import type {
   Account,
+  EmailAddress,
   Group,
   ProxyGroup,
   RandomWordSet,
@@ -45,17 +46,37 @@ export const SEED_PROXY_GROUPS: ProxyGroup[] = [
 
 const demoToken = (seed: string) => `demo-${seed}-not-a-real-token-0000000000`;
 
+/**
+ * Demo mail addresses (mail ledger). mail-01 is shared by two accounts
+ * and mail-03 is unused, so the link checks on the mail screen have
+ * something to show on a fresh install.
+ */
+export const SEED_EMAILS: EmailAddress[] = [
+  {
+    id: 'mail-01', address: 'kashima.main@gmail.com',
+    label: 'メイン運用', provider: 'gmail', createdAt: now, updatedAt: now,
+  },
+  {
+    id: 'mail-02', address: 'kashima.sub@outlook.com',
+    label: 'サブ運用', provider: 'outlook', createdAt: now, updatedAt: now,
+  },
+  {
+    id: 'mail-03', address: 'kashima.lab@yahoo.co.jp',
+    label: '検証用（未使用）', provider: 'yahoo', createdAt: now, updatedAt: now,
+  },
+];
+
 export const SEED_ACCOUNTS: Account[] = [
   {
     id: 'acc-01', handle: 'kashima_soccer_jp', displayName: '鹿島サッカー情報',
-    groupId: 'grp-main', proxyGroupId: 'px-tokyo-1', status: 'logged_in',
+    groupId: 'grp-main', proxyGroupId: 'px-tokyo-1', emailId: 'mail-01', status: 'logged_in',
     authToken: demoToken('01'), followers: 12480, following: 312,
     notifications: 14, dmCount: 2, searchBan: 'visible',
     memo: '主力アカウント', lastCheckedAt: hoursAgo(1), createdAt: now, updatedAt: now,
   },
   {
     id: 'acc-02', handle: 'antlers_daily', displayName: 'アントラーズ速報',
-    groupId: 'grp-main', proxyGroupId: 'px-tokyo-1', status: 'logged_in',
+    groupId: 'grp-main', proxyGroupId: 'px-tokyo-1', emailId: 'mail-01', status: 'logged_in',
     authToken: demoToken('02'), followers: 8930, following: 205,
     notifications: 31, dmCount: 5, searchBan: 'visible',
     lastCheckedAt: hoursAgo(1), createdAt: now, updatedAt: now,
@@ -69,7 +90,7 @@ export const SEED_ACCOUNTS: Account[] = [
   },
   {
     id: 'acc-04', handle: 'stadium_gourmet', displayName: 'スタグル部',
-    groupId: 'grp-main', proxyGroupId: 'px-tokyo-2', status: 'logged_in',
+    groupId: 'grp-main', proxyGroupId: 'px-tokyo-2', emailId: 'mail-02', status: 'logged_in',
     authToken: demoToken('04'), followers: 5210, following: 640,
     notifications: 7, dmCount: 1, searchBan: 'visible',
     lastCheckedAt: hoursAgo(3), createdAt: now, updatedAt: now,
@@ -176,10 +197,11 @@ export async function seedIfEmpty(): Promise<void> {
   if (cleared?.value === 'true') return;
   const count = await db.accounts.count();
   if (count > 0) return;
-  await db.transaction('rw', db.groups, db.proxyGroups, db.accounts, async () => {
+  await db.transaction('rw', db.groups, db.proxyGroups, db.accounts, db.emailAddresses, async () => {
     await db.groups.bulkAdd(SEED_GROUPS);
     await db.proxyGroups.bulkAdd(SEED_PROXY_GROUPS);
     await db.accounts.bulkAdd(SEED_ACCOUNTS);
+    await db.emailAddresses.bulkAdd(SEED_EMAILS);
   });
   await db.transaction('rw', db.templateGroups, db.templates, db.randomWordSets, async () => {
     await db.templateGroups.bulkAdd(SEED_TEMPLATE_GROUPS);

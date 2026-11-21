@@ -14,12 +14,21 @@ import { isLinkedAccount, linkedAccountSet } from './extensionLink';
 const REAL_ID = 'real-user-1';
 
 async function addRealAccount() {
+  await db.emailAddresses.add({
+    id: 'mail-real',
+    address: 'mine@gmail.com',
+    label: '自分のメアド',
+    provider: 'gmail',
+    createdAt: 1,
+    updatedAt: 1,
+  });
   await db.accounts.add({
     id: REAL_ID,
     handle: 'my_real_account',
     displayName: '自分のアカウント',
     groupId: null,
     proxyGroupId: null,
+    emailId: 'mail-real',
     status: 'logged_in',
     authToken: 'real-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     followers: 100,
@@ -134,6 +143,10 @@ describe('clearDemoData (real Dexie over fake-indexeddb)', () => {
 
     expect(result.accountsRemoved).toBe(12);
     expect((await db.accounts.toArray()).map((a) => a.id)).toEqual([REAL_ID]);
+    // Demo mail addresses are gone; the real one (and its link) survive.
+    expect(result.emailsRemoved).toBe(3);
+    expect((await db.emailAddresses.toArray()).map((e) => e.id)).toEqual(['mail-real']);
+    expect((await db.accounts.get(REAL_ID))?.emailId).toBe('mail-real');
     // Seed-only groups/proxies/templates go too (no real account uses them).
     expect(await db.groups.count()).toBe(0);
     expect(await db.proxyGroups.count()).toBe(0);

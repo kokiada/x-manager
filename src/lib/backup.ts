@@ -7,6 +7,7 @@ import type {
   AutoPostRun,
   BanCheckResult,
   BulkAction,
+  EmailAddress,
   FollowerHistory,
   Group,
   MetaRow,
@@ -71,6 +72,8 @@ export interface BackupTables {
   autoPostRuns?: AutoPostRun[];
   /** Scheduler state (last-run dates, fired slots, daily counts). */
   meta?: MetaRow[];
+  /** Mail ledger (docs/EMAIL_DESIGN.md). */
+  emailAddresses?: EmailAddress[];
 }
 
 export interface BackupPayload {
@@ -216,6 +219,7 @@ const NEW_TABLE_KEYS = [
   'autoPostRules',
   'autoPostRuns',
   'meta',
+  'emailAddresses',
 ] as const;
 
 /** Structural check of a decrypted payload before it touches the DB. */
@@ -267,6 +271,7 @@ export function emptyTables(): BackupTables {
     autoPostRules: [],
     autoPostRuns: [],
     meta: [],
+    emailAddresses: [],
   };
 }
 
@@ -281,6 +286,7 @@ export function buildGroupSubset(tables: BackupTables, groupId: string): BackupT
   const group = tables.groups.find((g) => g.id === groupId);
   const accounts = tables.accounts.filter((a) => a.groupId === groupId);
   const usedProxyIds = new Set(accounts.map((a) => a.proxyGroupId).filter(Boolean));
+  const usedEmailIds = new Set(accounts.map((a) => a.emailId).filter(Boolean));
   const accountIds = new Set(accounts.map((a) => a.id));
   const byAccount = <T extends { accountId: string }>(rows?: T[]): T[] =>
     (rows ?? []).filter((r) => accountIds.has(r.accountId));
@@ -289,6 +295,7 @@ export function buildGroupSubset(tables: BackupTables, groupId: string): BackupT
     groups: group ? [group] : [],
     proxyGroups: tables.proxyGroups.filter((p) => usedProxyIds.has(p.id)),
     accounts,
+    emailAddresses: (tables.emailAddresses ?? []).filter((e) => usedEmailIds.has(e.id)),
     banCheckResults: byAccount(tables.banCheckResults),
     followerHistory: byAccount(tables.followerHistory),
     notifications: byAccount(tables.notifications),

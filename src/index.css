@@ -251,6 +251,9 @@ button { font-family: inherit; }
 .badge.plain { color: var(--c-faded); }
 .badge.linked { color: var(--c-ok); }
 
+/* Flex helper: let one child take the remaining row width. */
+.grow { flex: 1; min-width: 0; }
+
 /* ---------- ledger (account list) ---------- */
 
 .ledger {

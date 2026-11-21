@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { Account, Group, NewAccount, ProxyGroup } from '../db/types';
+import type { Account, EmailAddress, Group, NewAccount, ProxyGroup } from '../db/types';
 import { ACCOUNT_STATUSES, STATUS_LABELS } from '../db/types';
 import { maskToken } from '../lib/format';
 import { Button } from './ui';
@@ -8,6 +8,8 @@ interface Props {
   initial?: Account;
   groups: Group[];
   proxyGroups: ProxyGroup[];
+  /** Mail ledger entries to choose from (may be empty). */
+  emails?: EmailAddress[];
   onSubmit: (input: NewAccount) => Promise<void>;
   onCancel: () => void;
 }
@@ -17,11 +19,12 @@ interface Props {
  * the UI: an existing token is shown masked and left untouched unless
  * a new value is typed.
  */
-export function AccountForm({ initial, groups, proxyGroups, onSubmit, onCancel }: Props) {
+export function AccountForm({ initial, groups, proxyGroups, emails = [], onSubmit, onCancel }: Props) {
   const [handle, setHandle] = useState(initial?.handle ?? '');
   const [displayName, setDisplayName] = useState(initial?.displayName ?? '');
   const [groupId, setGroupId] = useState<string>(initial?.groupId ?? '');
   const [proxyGroupId, setProxyGroupId] = useState<string>(initial?.proxyGroupId ?? '');
+  const [emailId, setEmailId] = useState<string>(initial?.emailId ?? '');
   const [status, setStatus] = useState(initial?.status ?? 'logged_out');
   const [authToken, setAuthToken] = useState('');
   const [memo, setMemo] = useState(initial?.memo ?? '');
@@ -46,6 +49,7 @@ export function AccountForm({ initial, groups, proxyGroups, onSubmit, onCancel }
         displayName: displayName.trim(),
         groupId: groupId || null,
         proxyGroupId: proxyGroupId || null,
+        emailId: emailId || null,
         status,
         authToken: authToken.trim() ? authToken.trim() : initial?.authToken,
         followers: initial?.followers ?? 0,
@@ -114,6 +118,22 @@ export function AccountForm({ initial, groups, proxyGroups, onSubmit, onCancel }
             ))}
           </select>
           <div className="hint">1アカウントに割り当てられるプロキシは1つだけです。</div>
+        </div>
+      </div>
+
+      <div className="field">
+        <label htmlFor="af-email">メールアドレス</label>
+        <select id="af-email" value={emailId} onChange={(e) => setEmailId(e.target.value)}>
+          <option value="">（未設定）</option>
+          {emails.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.address}
+              {e.label ? `（${e.label}）` : ''}
+            </option>
+          ))}
+        </select>
+        <div className="hint">
+          メールアドレス台帳で追加したものから選べます。アカウントの認証や連絡先の管理用です。
         </div>
       </div>
 
