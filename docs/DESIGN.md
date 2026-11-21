@@ -59,3 +59,14 @@
 3. M3: チェック系（アカウントチェック、サーチバンチェック、定期実行）— 完了（バンチェック画面＋定期実行エンジン）
 4. M4: 一括操作・自動操作、分析、通知/DM集約 — 完了（05/07/08画面＋自動投稿エンジン）
 5. M5: CSV・同期、PWA仕上げ、品質改善（売り物レベルへの磨き込み）— 基盤（CSV・同期・設定）完了、PWA仕上げと品質改善が残
+
+## 8. 統合メモ（2026-11-21、ガッツのブランチ `gatts/check-analytics-automation`）
+
+ガッツのブランチ（`1468426`、ベース `604887e`）は本線（`233e7f4`、全10セクション動作済み）に後から到着したため、ブランチ全体のマージではなく、内容を比較して良い部分だけ本線へ取り込んだ。両実装は同じ設計書から生まれたためデータモデルは似ていたが、本線は DB v4（11テーブル）、ガッツ側は DB v4相当（6テーブル）と別系統のため、UI/ロジックは本線のスキーマの上に移植した。ガッツのブランチは origin に残したまま（削除しない）。
+
+- **バンチェック（06）**：本線を採用（リプライバン注記・24時間以内判定の投稿連動・定期チェック配線が揃っているため）。ガッツの `searchBanVerdict`（話題×最新の判定を SearchBanState に写す純粋関数）は `banCheckService.ts` に移植し、画面の判定ラベル生成に使った。テストも移植。
+- **一括操作（05）**：本線の画面・サービスを採用（ランダム選出枠・キュー順・履歴が揃っているため）。ガッツの実装にあった **一括フォロー**（§8）を移植：`BulkActionKind` に `follow` を追加し、フォロー対象は @handle、実行は Executor の `executeAction`（follow はシミュレータ済み）経由。`authorHandleFromUrl` は twitter.com リンクにも対応させた。
+- **分析（07）**：ガッツの `analytics.ts` から `seededRandom` / `simulateMetrics` / `engagementRate` / `viewsPerHour` / `trackedPostsFromJobs` / `followerTrend` を本線の型（`PostAnalytics` / `FollowerHistory` / `PostJob`）に合わせて移植。ソートキーに `engagement` を追加し、ポスト追跡のスナップショット補完とフォロワー推移チャートの欠測区間判定に使った。テストも移植。
+- **自動投稿・自動操作**：ガッツの `automation.ts` は本線の `autoPost.ts` / `autoAction.ts` と機能が重複するため全体移植はせず、**決定論的スロット**の考えだけ取り入れた：`autoPostEngine` がルール＋日付をシードにした乱数でスロットを計算し、ティックごとに時刻が動く問題を解消した。`autoActionMatches` / `autoActionReactors` / `dailyCapReached` は本線の同等関数（`matchesKeywords` / `eligibleActingAccounts` / `dailyCapReached`）で既にカバー済み。
+- **チェック系サービス・通知**：ガッツの `checkService.ts`（CheckRun モデル）と `inboxItemsForCheck` は、本線の `banCheckService.ts`＋`notificationService.ts`（Executor 経由の取得・永続化）で既に同等以上に実現済みのため不採用。`AutomationRuleForm` の統合ルールモデルも、本線の自動投稿ルール／自動操作ルールを分けた設計を維持するため不採用。
+- **バックアップ**：ガッツの `backup.ts` は彼の6テーブル分で、本線のバックアップは既に v4 全11テーブルを対象済みのため不採用。

@@ -21,6 +21,7 @@ const KIND_LABELS: Record<BulkActionKind, string> = {
   like: 'いいね',
   repost: 'リポスト',
   bookmark: 'ブックマーク',
+  follow: 'フォロー',
 };
 
 const ACTION_KIND_LABELS: Record<string, string> = {
@@ -40,7 +41,7 @@ export function BulkAction() {
             <span className="page-no">05</span>一括操作
           </h1>
           <p className="page-lede">
-            ポストへのいいね・リポスト・ブックマークの一括実行と、条件で自動実行する自動操作ルール（§7）。
+            ポストへのいいね・リポスト・ブックマークの一括実行と、アカウントの一括フォロー（§8）、条件で自動実行する自動操作ルール（§7）。
           </p>
         </div>
       </div>
@@ -105,7 +106,7 @@ function BulkActionTab() {
 
   const run = async () => {
     if (targets.length === 0) {
-      toast.push('対象ポストのURLを入力してください', 'err');
+      toast.push(kind === 'follow' ? 'フォローするアカウント（@handle）を入力してください' : '対象ポストのURLを入力してください', 'err');
       return;
     }
     if (accountIds.length === 0) {
@@ -150,16 +151,26 @@ function BulkActionTab() {
         <h2 className="panel-title">投稿の一括操作（§7-1）</h2>
         <div className="form-row">
           <div className="field">
-            <label htmlFor="ba-targets">対象ポストのURL（1行に1件）</label>
+            <label htmlFor="ba-targets">
+              {kind === 'follow' ? 'フォローするアカウント（1行に1件・@付き可）' : '対象ポストのURL（1行に1件）'}
+            </label>
             <textarea
               id="ba-targets"
               rows={4}
               value={targetsText}
               onChange={(e) => setTargetsText(e.target.value)}
-              placeholder={'https://x.com/xxx/status/123...\nhttps://x.com/yyy/status/456...'}
+              placeholder={
+                kind === 'follow'
+                  ? '@example\n@another'
+                  : 'https://x.com/xxx/status/123...\nhttps://x.com/yyy/status/456...'
+              }
               disabled={running}
             />
-            <p className="hint">対象は複数指定できます。投稿者本人のアカウントは自動で除外されます。</p>
+            <p className="hint">
+              {kind === 'follow'
+                ? '対象は複数指定できます。自分自身は自動で除外されます。'
+                : '対象は複数指定できます。投稿者本人のアカウントは自動で除外されます。'}
+            </p>
           </div>
           <div className="field">
             <label>操作の種類</label>
@@ -285,7 +296,7 @@ function BulkActionTab() {
           {(history ?? []).map((job) => (
             <div key={job.id} className="simple-row">
               <span className="grow">
-                <strong>{KIND_LABELS[job.kind]}</strong> {job.targets.length}件のポスト × {job.accountIds.length}件のアカウント
+                <strong>{KIND_LABELS[job.kind]}</strong> {job.targets.length}件の対象 × {job.accountIds.length}件のアカウント
                 <div className="faded mono" style={{ fontSize: 12 }}>
                   {checkedAtLabel(job.createdAt)}・{job.status}・
                   成功 {job.entries.filter((e) => e.status === 'done').length}/{job.entries.length}

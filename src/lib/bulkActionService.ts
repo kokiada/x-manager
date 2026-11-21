@@ -7,11 +7,13 @@ import {
 } from '../db/repository';
 
 /**
- * Bulk-action service (research §7-1).
+ * Bulk-action service (research §7-1, §8 bulk follow).
  *
- * - Targets: one or more post URLs; kinds: like / repost / bookmark.
+ * - Targets: one or more post URLs (like / repost / bookmark) or
+ *   @handles (follow, §8).
  * - The post author's own accounts are excluded (「表示中アカウント
- *   で一括実行」は投稿者を除く全アカウントで実行）.
+ *   で一括実行」は投稿者を除く全アカウントで実行）; for follow, an
+ *   account never follows itself.
  * - Locked / frozen / logged-out accounts are skipped, never executed.
  * - queueSequential: finish target 1 across all accounts before
  *   target 2; otherwise each account runs all targets before the next
@@ -56,10 +58,17 @@ export function selectRandomAccounts<T>(
   return pool.slice(0, Math.min(range.count, pool.length));
 }
 
-/** Author handle from a post URL (https://x.com/<handle>/status/...). */
+/** Author handle from a post URL (https://x.com/<handle>/status/...). Also accepts twitter.com links. */
 export function authorHandleFromUrl(url: string): string | null {
-  const match = /x\.com\/([^/]+)\/status\//i.exec(url.trim());
+  const match =
+    /x\.com\/([^/?#]+)\/status\//i.exec(url.trim()) ??
+    /twitter\.com\/([^/?#]+)\/status\//i.exec(url.trim());
   return match ? match[1] : null;
+}
+
+/** Target handle for a follow action: "@handle" or a bare handle. */
+export function followTargetHandle(target: string): string {
+  return target.trim().replace(/^@/, '');
 }
 
 export async function runBulkAction(req: BulkActionRequest): Promise<BulkAction> {
@@ -81,19 +90,20 @@ export async function runBulkAction(req: BulkActionRequest): Promise<BulkAction>
     acting = orderedPool.filter((a) => picked.has(a.id));
   }
 
-  // Exclude the post author's own accounts (per target, unioned).
-  const authorHandles = new Set(
-    req.targets.map(authorHandleFromUrl).filter((h): h is string => !!h),
-  );
-
-  // Planned (target, account) pairs.
+  // Planned (target, account) pairs. Self-exclusion is per pair:
+  // for follow, an account never follows itself; for post actions,
+  // the post author's own accounts are excluded.
   const pairs: { targetUrl: string; accountId: string; handle: string; skipReason?: string }[] = [];
   const orderedPairs = req.queueSequential
     ? req.targets.flatMap((t) => acting.map((a) => ({ targetUrl: t, account: a })))
     : acting.flatMap((a) => req.targets.map((t) => ({ targetUrl: t, account: a })));
   for (const { targetUrl, account } of orderedPairs) {
-    if (authorHandles.has(account.handle)) {
-      pairs.push({ targetUrl, accountId: account.id, handle: account.handle, skipReason: '投稿者本人のアカウントのため除外' });
+    const selfHandle =
+      req.kind === 'follow'
+        ? followTargetHandle(targetUrl).toLowerCase()
+        : authorHandleFromUrl(targetUrl)?.toLowerCase();
+    if (selfHandle !== undefined && selfHandle !== null && selfHandle === account.handle.toLowerCase()) {
+      pairs.push({ targetUrl, accountId: account.id, handle: account.handle, skipReason: req.kind === 'follow' ? '自分自身のため除外' : '投稿者本人のアカウントのため除外' });
     } else if (account.status !== 'logged_in') {
       pairs.push({ targetUrl, accountId: account.id, handle: account.handle, skipReason: `アカウントの状態が「${account.status}」のためスキップ` });
     } else {
@@ -145,7 +155,13 @@ export async function runBulkAction(req: BulkActionRequest): Promise<BulkAction>
       continue;
     }
     try {
-      const result = await executor.executeAction(account, req.kind, { postUrl: pair.targetUrl });
+      const result = await executor.executeAction(
+        account,
+        req.kind,
+        req.kind === 'follow'
+          ? { targetHandle: followTargetHandle(pair.targetUrl) }
+          : { postUrl: pair.targetUrl },
+      );
       entries[i] = {
         ...entries[i],
         status: result.ok ? 'done' : 'failed',

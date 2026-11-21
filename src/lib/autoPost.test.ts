@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { seededRandom } from './analytics';
 import {
   computeSlotsForDate,
   dueSlots,
@@ -137,5 +138,23 @@ describe('nextSlot', () => {
     const slots = computeSlotsForDate(rule, day(2026, 11, 20), half);
     const next = nextSlot(rule, at(2026, 11, 20, 8, 0), [slots[0].key], half);
     expect(next!.label).toBe('18:00');
+  });
+});
+
+describe('deterministic slots (seeded rng per rule + day)', () => {
+  it('the same seed gives the same random-window slots on every call', () => {
+    const rule: AutoPostRuleShape = {
+      mode: 'random_window',
+      windowStart: '06:00',
+      windowEnd: '20:00',
+      postsPerDay: 4,
+    };
+    const a = computeSlotsForDate(rule, day(2026, 11, 20), seededRandom('r1:2026-11-20'));
+    const b = computeSlotsForDate(rule, day(2026, 11, 20), seededRandom('r1:2026-11-20'));
+    expect(a).toEqual(b);
+    // A different day seeds a different (but still valid) schedule.
+    const c = computeSlotsForDate(rule, day(2026, 11, 21), seededRandom('r1:2026-11-21'));
+    expect(c).toHaveLength(4);
+    expect(c.map((s) => s.dueAt)).not.toEqual(a.map((s) => s.dueAt));
   });
 });

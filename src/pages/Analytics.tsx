@@ -12,7 +12,9 @@ import {
 import {
   fetchCap,
   fetcherError,
+  followerTrend,
   requiredFetchers,
+  simulateMetrics,
   sortAnalytics,
   type AnalyticsSortKey,
 } from '../lib/analytics';
@@ -25,6 +27,7 @@ const SORT_LABELS: Record<AnalyticsSortKey, string> = {
   bookmarks: 'ブックマーク',
   views: '表示回数',
   date: '投稿日',
+  engagement: 'エンゲージメント率',
 };
 
 /** Tracking snapshot marks (research §12-2). */
@@ -289,14 +292,16 @@ function PostTrackingTab({
         for (const post of posts.slice(0, 3)) {
           const ageH = (Date.now() - post.postedAt) / 3600_000;
           const snapshots = TRACK_MARKS_H.filter((h) => h <= ageH).map((h) => {
-            // Growth curve: metrics rise quickly, then flatten.
-            const f = Math.min(1, 0.25 + 0.75 * (h / Math.max(h, 24)) ** 0.5) * (0.85 + 0.15 * (h / 48));
+            // Deterministic backfill from the post's own metrics curve
+            // (lib/analytics simulateMetrics): same post + same mark
+            // always gives the same numbers.
+            const sim = simulateMetrics(post.postId, h, account.followers);
             return {
               at: post.postedAt + h * 3600_000,
-              views: Math.max(1, Math.round(post.views * f)),
-              likes: Math.max(0, Math.round(post.likes * f)),
-              reposts: Math.max(0, Math.round(post.reposts * f)),
-              bookmarks: Math.max(0, Math.round(post.bookmarks * f)),
+              views: sim.views,
+              likes: sim.likes,
+              reposts: sim.reposts,
+              bookmarks: sim.bookmarks,
             };
           });
           // Always keep the latest values as the final snapshot.
@@ -468,16 +473,13 @@ function FollowerChart({
   const y = (v: number) => PAD.t + (1 - (v - lo) / (hi - lo)) * (H - PAD.t - PAD.b);
 
   // Split into runs of consecutive days: solid within a run, dashed
-  // across a gap (§12-3).
+  // across a gap (§12-3). Gap detection comes from lib/analytics
+  // followerTrend so the chart and the trend table agree.
+  const points = followerTrend(rows);
   const runs: { date: string; followers: number }[][] = [];
-  for (const row of rows) {
-    const prev = runs.length > 0 ? runs[runs.length - 1] : null;
-    const prevRow = prev?.[prev.length - 1];
-    const consecutive =
-      prevRow &&
-      Math.round((new Date(`${row.date}T00:00:00`).getTime() - new Date(`${prevRow.date}T00:00:00`).getTime()) / 86400_000) === 1;
-    if (consecutive && prev) prev.push(row);
-    else runs.push([row]);
+  for (const p of points) {
+    if (p.gap || runs.length === 0) runs.push([{ date: p.date, followers: p.followers }]);
+    else runs[runs.length - 1].push({ date: p.date, followers: p.followers });
   }
 
   const gapCount = runs.length - 1;

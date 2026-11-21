@@ -1,5 +1,5 @@
 import { executor } from '../executor';
-import type { BanCheckResult } from '../db/types';
+import type { BanCheckResult, SearchBanState } from '../db/types';
 import {
   getAccount,
   listAccounts,
@@ -27,6 +27,17 @@ export interface BanCheckProgress {
   total: number;
   phase: 'checking' | 'waiting';
   message: string;
+}
+
+/** Verdict from the two search tabs (§9-1). null on either side = fetch failed (⚠). */
+export function searchBanVerdict(
+  topicVisible: boolean | null,
+  latestVisible: boolean | null,
+): SearchBanState {
+  if (topicVisible === null || latestVisible === null) return 'unknown';
+  if (topicVisible && latestVisible) return 'visible';
+  if (!topicVisible && latestVisible) return 'topic_hidden';
+  return 'both_hidden';
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

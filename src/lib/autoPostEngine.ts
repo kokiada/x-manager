@@ -1,4 +1,5 @@
 import { createAndRunJob } from './bulkPostService';
+import { seededRandom } from './analytics';
 import { dueSlots, nextSlot, type AutoPostRuleShape, type AutoPostSlot } from './autoPost';
 import {
   addAutoPostRun,
@@ -94,12 +95,14 @@ export async function tickAutoPost(now = Date.now()): Promise<void> {
     const fired = await getFiredSlotKeys(rule.id, todayKey);
     const firedSet = new Set(fired);
     // Today + yesterday (overnight random windows spill past midnight).
-    // Each day is evaluated once: slot times carry random jitter, so
-    // re-computing would give a different schedule each call.
+    // Slots are computed with a rng seeded per rule + day, so the
+    // day's schedule is stable across ticks (re-computing with
+    // Math.random would move the jittered times on every tick).
     const due: AutoPostSlot[] = [];
     const skippedLate: AutoPostSlot[] = [];
     for (const day of [yesterday, today]) {
-      const split = dueSlots(shape, day, now, fired);
+      const rng = seededRandom(`${rule.id}:${localDateString(day.getTime())}`);
+      const split = dueSlots(shape, day, now, fired, rng);
       due.push(...split.due);
       skippedLate.push(...split.skippedLate);
     }

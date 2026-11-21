@@ -348,7 +348,7 @@ export interface BanCheckResult {
   checkedAt: number;
 }
 
-export type BulkActionKind = 'like' | 'repost' | 'bookmark';
+export type BulkActionKind = 'like' | 'repost' | 'bookmark' | 'follow';
 
 export interface BulkActionEntry {
   accountId: string;

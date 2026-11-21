@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { BanCheckResult } from '../db/types';
-import { runBanCheckBatch } from '../lib/banCheckService';
+import { runBanCheckBatch, searchBanVerdict } from '../lib/banCheckService';
 import { executor } from '../executor';
 import {
   SEARCH_QUERIES_PER_CHECK,
@@ -16,10 +16,8 @@ function verdictMark(value: boolean | null): string {
 }
 
 function verdictLabel(result: BanCheckResult): string {
-  if (result.topicVisible === null || result.latestVisible === null) return '取得失敗';
-  if (result.topicVisible && result.latestVisible) return '表示OK';
-  if (!result.topicVisible && result.latestVisible) return '話題のみ非表示';
-  return '両方非表示';
+  const verdict = searchBanVerdict(result.topicVisible, result.latestVisible);
+  return { visible: '表示OK', topic_hidden: '話題のみ非表示', both_hidden: '両方非表示', unknown: '取得失敗' }[verdict];
 }
 
 export function BanCheck() {
