@@ -50,13 +50,20 @@ export interface ExtensionJob {
   payload: Record<string, unknown>;
 }
 
-/** ジョブ失敗の分類。`not_implemented` は「拡張が応答したが、その操作はまだ実装されていない」ことを表す（次の段階で消えていく）。 */
+/** ジョブ失敗の分類。`not_implemented` は「拡張が応答したが、その操作はまだ実装されていない」ことを表す（次の段階で消えていく）。`extension_broken` は拡張自体が壊れた状態（Cookie API が使えない等）で、再読み込みが必要。 */
 export type ExtensionResultCode =
   | 'not_implemented'
   | 'no_session'
   | 'rate_limited'
   | 'x_error'
+  | 'extension_broken'
   | 'unknown';
+
+/** 拡張の自己診断（ハンドシェイク応答に付く）。 */
+export interface ExtensionDiagnostics {
+  /** `chrome.cookies`（set/get）が使えるかどうか。 */
+  cookiesApi: boolean;
+}
 
 /** 拡張 → アプリ：ジョブの結果。 */
 export interface ExtensionJobResult {
@@ -85,6 +92,11 @@ export interface HelloAckMessage {
   kind: 'hello-ack';
   version: number;
   extensionVersion: string;
+  /**
+   * 拡張の自己診断。古い拡張はこれを付けないので、受け取り側は
+   * 無い場合を「不明」として扱う（helloAckDiagnostics 参照）。
+   */
+  diagnostics?: ExtensionDiagnostics;
 }
 
 /** 拡張に連携済みの1アカウント（セッション）。 */
@@ -145,6 +157,18 @@ export function isHelloAck(value: unknown): value is HelloAckMessage {
     typeof value.version === 'number' &&
     typeof value.extensionVersion === 'string'
   );
+}
+
+/**
+ * hello-ack から自己診断を取り出す。診断が無い（古い拡張）・形が
+ * 壊れている場合は null を返す。呼び出し側は null を「不明」として
+ * 扱い、疎通自体は通ったものとして進める。
+ */
+export function helloAckDiagnostics(value: unknown): ExtensionDiagnostics | null {
+  if (!isRecord(value)) return null;
+  const d = value.diagnostics;
+  if (!isRecord(d) || typeof d.cookiesApi !== 'boolean') return null;
+  return { cookiesApi: d.cookiesApi };
 }
 
 export function isJobResult(value: unknown): value is ExtensionJobResult & {

@@ -108,6 +108,10 @@ GraphQL の query ID は X の更新で数週間単位で変わる。`extension/
 （同期は `src/executor/protocol.test.ts` が検証）。
 
 - ハンドシェイク：アプリ `hello` → 拡張 `hello-ack`（プロトコル版・拡張の版を返す）
+  - 応答には自己診断 `diagnostics: { cookiesApi: boolean }` も付く。
+    `chrome.cookies` が使えない状態（拡張の再読み込み直後や Service
+    Worker の異常時）では `false` になる。古い拡張は診断を返さない
+    ので、アプリ側は無い場合を「不明」として扱う。
 - ジョブ：`{id, method, accountId, accountHandle, payload}` →
   結果 `{id, ok, data?, error?, code?, at}`（`id` で相関を取る）
 - 連携一覧：`list-sessions` → `{sessions: [{accountId, handle}]}`（旧形式
@@ -115,7 +119,13 @@ GraphQL の query ID は X の更新で数週間単位で変わる。`extension/
 - メソッドは Executor と1対1：`executePost / deletePost / executeAction /
   checkAccount / checkSearchBan / fetchPostAnalytics / fetchNotifications`
 - 失敗の分類 `code`：`not_implemented`（未実装）／`no_session`（未連携）／
-  `rate_limited`／`x_error`／`unknown`
+  `rate_limited`／`x_error`／`extension_broken`（拡張の Cookie API が
+  使えない＝再読み込みが必要）／`unknown`
+- チェック前の疎通確認：アカウントチェック（単体・一括・詳細画面）は
+  拡張モードではジョブを送る前に接続＋Cookie API の可否を確認し、
+  ダメなら理由付きの日本語トーストを出して止める。生の TypeError
+  （`Cannot read properties of undefined (reading 'set')`）が画面に
+  出ることはない。
 
 タイムアウト：ハンドシェイク 3秒、ジョブ 30秒。
 

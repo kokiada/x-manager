@@ -14,6 +14,7 @@ import type {
   SearchBanCheckResult,
 } from './Executor';
 import { WindowPostMessageTransport, type ExtensionTransport } from './transport';
+import { EXTENSION_COOKIES_UNAVAILABLE_MESSAGE } from '../lib/errorMessage';
 import type {
   ExtensionJob,
   ExtensionJobResult,
@@ -36,6 +37,7 @@ export const EXTENSION_ERROR_MESSAGES: Record<ExtensionResultCode, string> = {
   rate_limited:
     'Xの制限（レートリミット）にかかりました。しばらく待ってから再試行してください。',
   x_error: '拡張での実行に失敗しました',
+  extension_broken: EXTENSION_COOKIES_UNAVAILABLE_MESSAGE,
   unknown: '拡張での実行に失敗しました',
 };
 

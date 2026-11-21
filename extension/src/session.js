@@ -26,8 +26,25 @@ let queue = Promise.resolve();
 
 const XManagerSession = {
   /**
+   * `chrome.cookies`（set/get）が使えるかどうか。拡張の再読み込み
+   * 直後や Service Worker の異常状態では `chrome.cookies` 自体が
+   * undefined になることがあり、そのまま `.set` を読むと生の
+   * TypeError（`Cannot read properties of undefined (reading 'set')`）
+   * が画面に出てしまう。ジョブ実行前にここで確かめる。
+   */
+  cookiesApiAvailable(chromeApi) {
+    return !!(
+      chromeApi &&
+      chromeApi.cookies &&
+      typeof chromeApi.cookies.set === 'function' &&
+      typeof chromeApi.cookies.get === 'function'
+    );
+  },
+
+  /**
    * アカウントのセッションで fn({authToken, ct0}) を直列に実行する。
-   * セッションが無ければ no_session、ct0 が取れなければ x_error を投げる。
+   * セッションが無ければ no_session、Cookie API が使えなければ
+   * extension_broken、ct0 が取れなければ x_error を投げる。
    */
   withSession(accountId, fn, deps) {
     const task = queue.then(() => runSession(accountId, fn, deps));
@@ -46,6 +63,15 @@ async function runSession(accountId, fn, deps) {
     throw errors.makeError(
       'no_session',
       'このアカウントは拡張に連携されていません。ポップアップから auth_token を登録してください。',
+    );
+  }
+  // Cookie API が使えないまま進むと `chrome.cookies.set` で生の
+  // TypeError になる。ここで止めて、再読み込みを促す文言を返す。
+  // 文言はアプリ側の EXTENSION_COOKIES_UNAVAILABLE_MESSAGE と同じ。
+  if (!XManagerSession.cookiesApiAvailable(deps.chrome)) {
+    throw errors.makeError(
+      'extension_broken',
+      '拡張のCookie機能が使えません。拡張を再読み込みしてください（chrome://extensions で「更新」→アプリを再起動）。それでも直らなければ、拡張の権限が無効になっている可能性があります。',
     );
   }
   await setCookie(deps.chrome, 'auth_token', session.authToken, { httpOnly: true });

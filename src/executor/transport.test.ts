@@ -53,6 +53,24 @@ describe('WindowPostMessageTransport', () => {
     await expect(promise).resolves.toEqual({ version: 1, extensionVersion: '0.1.0' });
   });
 
+  it('ping は hello-ack の診断（Cookie API の可否）も返す', async () => {
+    const win = fakeWindow();
+    const transport = new WindowPostMessageTransport(win);
+    const promise = transport.ping(500);
+    win.dispatch({
+      source: EXTENSION_SOURCE,
+      kind: 'hello-ack',
+      version: 1,
+      extensionVersion: '0.1.0',
+      diagnostics: { cookiesApi: false },
+    });
+    await expect(promise).resolves.toEqual({
+      version: 1,
+      extensionVersion: '0.1.0',
+      diagnostics: { cookiesApi: false },
+    });
+  });
+
   it('返事がなければ未接続エラーになる', async () => {
     const win = fakeWindow();
     const transport = new WindowPostMessageTransport(win);

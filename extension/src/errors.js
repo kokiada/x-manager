@@ -12,7 +12,7 @@
 const XManagerErrors = {
   /**
    * 分類付きエラーを作る。
-   * @param {'not_implemented'|'no_session'|'rate_limited'|'x_error'|'unknown'} code
+   * @param {'not_implemented'|'no_session'|'rate_limited'|'x_error'|'extension_broken'|'unknown'} code
    * @param {string} message 日本語で表示できる文言
    */
   makeError(code, message) {

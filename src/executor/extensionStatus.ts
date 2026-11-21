@@ -13,6 +13,11 @@ export interface ExtensionConnection {
   linkedSessions?: ExtensionSession[];
   /** 拡張にセッション登録済みのアカウントID（接続時のみ）。 */
   linkedAccountIds?: string[];
+  /**
+   * 拡張の Cookie API が使えるか（接続時のみ）。true/false。
+   * 古い拡張（診断を返さない）は null＝不明として扱う。
+   */
+  cookiesApiOk?: boolean | null;
   /** 未接続時の理由（日本語）。 */
   error?: string;
 }
@@ -33,6 +38,7 @@ export async function checkExtensionConnection(
       extensionVersion: handshake.extensionVersion,
       linkedSessions,
       linkedAccountIds: linkedSessions.map((s) => s.accountId),
+      cookiesApiOk: handshake.diagnostics ? handshake.diagnostics.cookiesApi : null,
     };
   } catch (err) {
     return {

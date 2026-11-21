@@ -10,6 +10,7 @@ import { accountsToCsv } from '../lib/accountCsv';
 import { downloadTextFile } from '../lib/csv';
 import { compactCount, checkedAtLabel } from '../lib/format';
 import { errorMessageOf, SESSION_EXPIRED_MESSAGE } from '../lib/errorMessage';
+import { checkExtensionReady } from '../lib/extensionPrecheck';
 import { AccountForm } from '../components/AccountForm';
 import { GroupManager } from '../components/GroupManager';
 import { Button, Modal, StatusBadge, useToast } from '../components/ui';
@@ -64,6 +65,15 @@ export function Accounts() {
   }, [accounts, groupFilter, query]);
 
   const runCheck = async (account: Account) => {
+    // 拡張モードではジョブを送る前に疎通確認（接続＋Cookie API）。
+    // ダメならここで止めて理由を出し、生のエラーが出る前に防ぐ。
+    if (mode === 'extension') {
+      const ready = await checkExtensionReady();
+      if (!ready.ok) {
+        toast.push(ready.message, 'err');
+        return;
+      }
+    }
     setCheckingId(account.id);
     try {
       const result = await executor.checkAccount(account);
@@ -80,7 +90,9 @@ export function Accounts() {
         'ok',
       );
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      // errorMessageOf 経由にすることで、拡張の Cookie API が無いときの
+      // 生の TypeError も日本語の説明に置き換わる。
+      const detail = errorMessageOf(err, '原因不明のエラー');
       // 取り込み時に付けた仮ハンドル（linked-…）はX上に存在しないため、
       // チェックは必ず「見つかりません」になる。原因をそのまま伝える。
       if (account.handle.startsWith('linked-')) {
@@ -97,6 +109,14 @@ export function Accounts() {
   };
 
   const runBulkCheck = async () => {
+    // 1件ずつ失敗する前に、拡張モードでは疎通確認を1回だけ行う。
+    if (mode === 'extension') {
+      const ready = await checkExtensionReady();
+      if (!ready.ok) {
+        toast.push(ready.message, 'err');
+        return;
+      }
+    }
     const targets = filtered;
     let done = 0;
     let failed = 0;

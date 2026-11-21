@@ -282,6 +282,60 @@ describe('セッション切替（session.js）', () => {
       ),
     ).rejects.toMatchObject({ code: 'no_session' });
   });
+
+  it('chrome.cookies が無ければ生の TypeError ではなく extension_broken で失敗する', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    delete chromeStub.cookies;
+    const fetchStub = makeFetchStub([]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    await expect(
+      sandbox.XManagerSession.withSession(
+        'a',
+        async () => 'x',
+        { sessions, chrome: chromeStub, fetchImpl: fetchStub },
+      ),
+    ).rejects.toMatchObject({
+      code: 'extension_broken',
+      message: expect.stringContaining('Cookie'),
+    });
+    await expect(
+      sandbox.XManagerSession.withSession(
+        'a',
+        async () => 'x',
+        { sessions, chrome: chromeStub, fetchImpl: fetchStub },
+      ),
+    ).rejects.toMatchObject({ message: expect.stringContaining('再読み込み') });
+  });
+
+  it('cookies.set だけ欠けていても extension_broken で失敗する', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    chromeStub.cookies = { get: async () => null };
+    const fetchStub = makeFetchStub([]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    await expect(
+      sandbox.XManagerSession.withSession(
+        'a',
+        async () => 'x',
+        { sessions, chrome: chromeStub, fetchImpl: fetchStub },
+      ),
+    ).rejects.toMatchObject({ code: 'extension_broken' });
+  });
+
+  it('cookiesApiAvailable は set/get の有無で判定する', () => {
+    const sandbox = loadExtension(makeChromeStub(), makeFetchStub([]));
+    expect(sandbox.XManagerSession.cookiesApiAvailable(makeChromeStub())).toBe(true);
+    expect(sandbox.XManagerSession.cookiesApiAvailable({})).toBe(false);
+    expect(sandbox.XManagerSession.cookiesApiAvailable({ cookies: { set: async () => {} } })).toBe(
+      false,
+    );
+    expect(sandbox.XManagerSession.cookiesApiAvailable(undefined)).toBe(false);
+  });
 });
 
 describe('query ID 解決（queryIds.js）', () => {
@@ -869,6 +923,122 @@ describe('取得系（dispatch + xClient）', () => {
 });
 
 describe('background の配線', () => {
+  type BgListener = (
+    message: unknown,
+    sender: unknown,
+    sendResponse: (r: unknown) => void,
+  ) => boolean;
+
+  /** background.js を vm で読み込み、onMessage リスナーを返す。 */
+  function loadBackground(chromeStub: AnyRecord, fetchStub: AnyRecord) {
+    let listener: BgListener | null = null;
+    chromeStub.runtime = {
+      onMessage: {
+        addListener: (fn: BgListener) => {
+          listener = fn;
+        },
+      },
+    };
+    const sandbox: AnyRecord = {
+      console,
+      chrome: chromeStub,
+      fetch: fetchStub,
+    };
+    sandbox.self = sandbox;
+    const ctx = createContext(sandbox);
+    sandbox.importScripts = (...files: string[]) => {
+      for (const file of files) {
+        runInContext(
+          readFileSync(new URL(`../../extension/src/${file}`, import.meta.url), 'utf8'),
+          ctx,
+          { filename: file },
+        );
+      }
+    };
+    runInContext(
+      readFileSync(new URL('../../extension/src/background.js', import.meta.url), 'utf8'),
+      ctx,
+      { filename: 'background.js' },
+    );
+    return {
+      getListener: () => listener,
+    };
+  }
+
+  function sendToBackground(
+    listener: BgListener,
+    message: unknown,
+  ): Promise<AnyRecord> {
+    return new Promise<AnyRecord>((resolve) => {
+      listener(message, {}, (r: unknown) => resolve(r as AnyRecord));
+    });
+  }
+
+  it('hello-ack は Cookie API の診断を付けて返す', async () => {
+    const { getListener } = loadBackground(makeChromeStub(), makeFetchStub([]));
+    const listener = getListener();
+    expect(listener).not.toBe(null);
+    const ack = await sendToBackground(listener!, {
+      source: 'x-manager',
+      kind: 'hello',
+    });
+    expect(ack).toMatchObject({
+      source: 'x-manager-extension',
+      kind: 'hello-ack',
+      version: 1,
+      extensionVersion: '0.1.0',
+      diagnostics: { cookiesApi: true },
+    });
+  });
+
+  it('chrome.cookies が無ければ hello-ack の診断は cookiesApi:false になる', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    delete chromeStub.cookies;
+    const { getListener } = loadBackground(chromeStub, makeFetchStub([]));
+    const listener = getListener();
+    expect(listener).not.toBe(null);
+    const ack = await sendToBackground(listener!, {
+      source: 'x-manager',
+      kind: 'hello',
+    });
+    expect(ack).toMatchObject({ diagnostics: { cookiesApi: false } });
+  });
+
+  it('Cookie API が無い状態の checkAccount は extension_broken の結果を返す', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    delete chromeStub.cookies;
+    const storageData: Record<string, unknown> = {
+      'xmanager.sessions.v1': {
+        acc1: { authToken: 'x'.repeat(40), handle: 'foo', linkedAt: 1 },
+      },
+    };
+    chromeStub.storage = {
+      local: {
+        get: async (key: string) =>
+          storageData[key] !== undefined ? { [key]: storageData[key] } : {},
+        set: async (obj: AnyRecord) => Object.assign(storageData, obj),
+      },
+    };
+    const { getListener } = loadBackground(chromeStub, makeFetchStub([]));
+    const listener = getListener();
+    expect(listener).not.toBe(null);
+    const result = await sendToBackground(listener!, {
+      source: 'x-manager',
+      kind: 'job',
+      id: 'j-broken',
+      method: 'checkAccount',
+      accountId: 'acc1',
+      accountHandle: 'foo',
+      payload: {},
+    });
+    expect(result).toMatchObject({
+      id: 'j-broken',
+      ok: false,
+      code: 'extension_broken',
+      error: expect.stringContaining('Cookie'),
+    });
+  });
+
   it('list-sessions は sessions（ID＋ハンドル）と accountIds（後方互換）を返す', async () => {
     // background.js を vm で読み込む。importScripts は読み込んだ
     // ファイルを同じコンテキストで実行するだけの差し替え。

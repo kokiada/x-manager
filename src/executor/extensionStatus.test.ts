@@ -28,6 +28,34 @@ describe('checkExtensionConnection', () => {
         { accountId: 'b', handle: null },
       ],
       linkedAccountIds: ['a', 'b'],
+      // 診断を返さない古い拡張は「不明」
+      cookiesApiOk: null,
+    });
+  });
+
+  it('診断付きの ping は Cookie API の可否をそのまま返す', async () => {
+    const okTransport = fakeTransport({
+      ping: async () => ({
+        version: 1,
+        extensionVersion: '0.1.0',
+        diagnostics: { cookiesApi: true },
+      }),
+    });
+    await expect(checkExtensionConnection(okTransport)).resolves.toMatchObject({
+      connected: true,
+      cookiesApiOk: true,
+    });
+
+    const brokenTransport = fakeTransport({
+      ping: async () => ({
+        version: 1,
+        extensionVersion: '0.1.0',
+        diagnostics: { cookiesApi: false },
+      }),
+    });
+    await expect(checkExtensionConnection(brokenTransport)).resolves.toMatchObject({
+      connected: true,
+      cookiesApiOk: false,
     });
   });
 

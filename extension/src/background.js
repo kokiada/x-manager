@@ -37,12 +37,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   // ハンドシェイク：アプリが拡張の有無を確認する。
+  // 診断（Cookie API の可否）も一緒に返し、アプリ側がジョブを送る
+  // 前に「実行できる状態か」を判断できるようにする。
   if (message.kind === 'hello' && message.source === XManagerProtocol.PAGE_SOURCE) {
     sendResponse({
       source: XManagerProtocol.EXTENSION_SOURCE,
       kind: 'hello-ack',
       version: XManagerProtocol.VERSION,
       extensionVersion: XManagerProtocol.EXTENSION_VERSION,
+      diagnostics: {
+        cookiesApi: XManagerSession.cookiesApiAvailable(chrome),
+      },
     });
     return false;
   }

@@ -4,6 +4,7 @@ import {
   EXTENSION_SOURCE,
   PAGE_SOURCE,
   PROTOCOL_VERSION,
+  helloAckDiagnostics,
   isExtensionMessage,
   isHelloAck,
   isJobResult,
@@ -23,6 +24,48 @@ describe('protocol validators', () => {
     ).toBe(true);
     expect(isHelloAck({ source: EXTENSION_SOURCE, kind: 'hello-ack', version: 1 })).toBe(false);
     expect(isHelloAck({ source: PAGE_SOURCE, kind: 'hello', version: 1 })).toBe(false);
+  });
+
+  it('hello-ack の診断は有るものだけ取り出し、無い・壊れたものは null', () => {
+    // 新しい拡張：診断付き
+    expect(
+      helloAckDiagnostics({
+        source: EXTENSION_SOURCE,
+        kind: 'hello-ack',
+        version: 1,
+        extensionVersion: '0.1.0',
+        diagnostics: { cookiesApi: true },
+      }),
+    ).toEqual({ cookiesApi: true });
+    expect(
+      helloAckDiagnostics({
+        source: EXTENSION_SOURCE,
+        kind: 'hello-ack',
+        version: 1,
+        extensionVersion: '0.1.0',
+        diagnostics: { cookiesApi: false },
+      }),
+    ).toEqual({ cookiesApi: false });
+    // 古い拡張：診断が無いので「不明」
+    expect(
+      helloAckDiagnostics({
+        source: EXTENSION_SOURCE,
+        kind: 'hello-ack',
+        version: 1,
+        extensionVersion: '0.1.0',
+      }),
+    ).toBe(null);
+    // 形が壊れた診断も「不明」として扱い、疎通自体は通す
+    expect(
+      helloAckDiagnostics({
+        source: EXTENSION_SOURCE,
+        kind: 'hello-ack',
+        version: 1,
+        extensionVersion: '0.1.0',
+        diagnostics: { cookiesApi: 'yes' },
+      }),
+    ).toBe(null);
+    expect(helloAckDiagnostics(null)).toBe(null);
   });
 
   it('job result を正しく判定する', () => {

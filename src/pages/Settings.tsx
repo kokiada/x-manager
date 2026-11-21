@@ -242,6 +242,16 @@ export function Settings() {
               ? `接続済み（拡張 v${extStatus.extensionVersion}、連携アカウント ${extStatus.linkedAccountIds?.length ?? 0}件）`
               : `未接続 — ${extStatus.error ?? '拡張が見つかりません'}`}
         </p>
+        {extStatus?.connected && (
+          <p className="faded" style={{ fontSize: 13, margin: '4px 0 8px' }}>
+            Cookie API：
+            {extStatus.cookiesApiOk === true
+              ? '利用可'
+              : extStatus.cookiesApiOk === false
+                ? '利用不可 — 拡張を再読み込みしてください（chrome://extensions で「更新」→アプリを再起動）'
+                : '不明（拡張が古い可能性があります。pull して拡張を再読み込みしてください）'}
+          </p>
+        )}
         <Button onClick={checkExtension} disabled={checkingExt}>
           {checkingExt ? '確認中…' : '接続を確認'}
         </Button>{' '}

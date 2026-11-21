@@ -3,10 +3,12 @@ import {
   JOB_TIMEOUT_MS,
   PAGE_SOURCE,
   PROTOCOL_VERSION,
+  helloAckDiagnostics,
   isHelloAck,
   isJobResult,
   isSessionsMessage,
   normalizeSessionsMessage,
+  type ExtensionDiagnostics,
   type ExtensionJob,
   type ExtensionJobResult,
   type ExtensionSession,
@@ -35,6 +37,8 @@ export class ExtensionTimeoutError extends Error {
 export interface ExtensionHandshake {
   version: number;
   extensionVersion: string;
+  /** 拡張の自己診断（古い拡張では undefined＝不明）。 */
+  diagnostics?: ExtensionDiagnostics;
 }
 
 /**
@@ -120,7 +124,11 @@ export class WindowPostMessageTransport implements ExtensionTransport {
     if (ack.version !== PROTOCOL_VERSION) {
       throw new ExtensionNotConnectedError();
     }
-    return { version: ack.version, extensionVersion: ack.extensionVersion };
+    return {
+      version: ack.version,
+      extensionVersion: ack.extensionVersion,
+      diagnostics: helloAckDiagnostics(ack) ?? undefined,
+    };
   }
 
   async sendJob(job: ExtensionJob): Promise<ExtensionJobResult> {

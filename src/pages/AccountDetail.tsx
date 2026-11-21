@@ -9,6 +9,7 @@ import { runSingleBanCheck } from '../lib/banCheckService';
 import { executor } from '../executor';
 import { checkedAtLabel, fullCount, maskToken } from '../lib/format';
 import { errorMessageOf, SESSION_EXPIRED_MESSAGE } from '../lib/errorMessage';
+import { checkExtensionReady } from '../lib/extensionPrecheck';
 import { AccountForm } from '../components/AccountForm';
 import { Button, Modal, StatusBadge, useToast } from '../components/ui';
 import { useLinkedAccounts } from '../hooks/useLinkedAccounts';
@@ -61,6 +62,14 @@ export function AccountDetail() {
   const proxy = proxyGroups?.find((p) => p.id === account.proxyGroupId);
 
   const runCheck = async () => {
+    // 拡張モードではジョブを送る前に疎通確認（接続＋Cookie API）。
+    if (mode === 'extension') {
+      const ready = await checkExtensionReady();
+      if (!ready.ok) {
+        toast.push(ready.message, 'err');
+        return;
+      }
+    }
     setBusy('check');
     try {
       const result = await executor.checkAccount(account);
