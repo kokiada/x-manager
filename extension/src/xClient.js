@@ -12,9 +12,10 @@
  *  - query ID は X の更新で変わる。queryIds.js がバンドル走査で
  *    生きた ID を探し、見つからなければ not_implemented を返す。
  *  - 2026年から X は書き込みに `x-client-transaction-id` ヘッダを
- *    求めることがある。生成器はまだ無いので、ヘッダ無しで送り、
- *    403 ならその旨が分かるエラーにする。getTransactionId を渡せば
- *    差し込めるようになっている（後で実装するための口）。
+ *    求めることがある。生成器は transactionId.js（@lami/
+ *    x-client-transaction-id 0.3.3 の Service Worker 向け移植）にあり、
+ *    background が getTransactionId として差し込んでいる。生成に
+ *    失敗したらヘッダ無しで送り、403 ならその旨が分かるエラーにする。
  *  - 通知・DM・バッジ数の応答形式は Web 版の実装詳細で、変わる
  *    ことがある。読めない形式なら not_implemented を返す。
  *
@@ -89,12 +90,14 @@ const XManagerXClient = {
 
     async function requestJson(url, options, auth, { isWrite }) {
       let res;
+      let txAttached = false;
       try {
         const init = { ...options };
         if (getTransactionId) {
           try {
             const txId = await getTransactionId(options.method || 'GET', url);
             if (txId) {
+              txAttached = true;
               init.headers = { ...(init.headers || {}), 'x-client-transaction-id': txId };
             }
           } catch {
@@ -120,7 +123,9 @@ const XManagerXClient = {
           res.status === 401
             ? 'Xのセッションが切れています。ポップアップで auth_token を登録し直してください。'
             : isWrite
-              ? 'Xがこの操作を拒否しました（403）。Xが追加の認証（トランザクションID）を求めている可能性があります。現在この認証方式には未対応のため、この操作はできません。対応後に改めてお試しください。'
+              ? txAttached
+                ? 'Xがこの操作を拒否しました（403）。トランザクションIDを付けて送っても拒否されたため、アカウントの制限か、X側の仕様変更の可能性があります。しばらく待ってから再試行してください。'
+                : 'Xがこの操作を拒否しました（403）。トランザクションIDの生成に失敗したためヘッダ無しで送り、Xに拒否されました。拡張を再読み込みしてから再試行してください。'
               : 'Xがこの取得を拒否しました（403）。セッションが無効か、アカウントに制限がかかっている可能性があります。',
         );
         err.status = res.status;

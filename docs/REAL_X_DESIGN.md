@@ -94,13 +94,24 @@ GraphQL の query ID は X の更新で数週間単位で変わる。`extension/
 ### 最大のリスク：x-client-transaction-id
 
 2026年から X は書き込み系の GraphQL 呼び出しに `x-client-transaction-id`
-ヘッダを求めることがある。これは x.com の `ondemand.s` という JS から
-生成する値で、生成器の実装はまだ無い（`getTransactionId` は差し込み口
-だけで、background は `null` を渡している）。現状はヘッダ無しで送り、
-403 が返れば「現在この認証方式には未対応のため、この操作はできません」
-と分かるエラーにする。`xClient.createClient` は `getTransactionId` を
-差し込める口を持っているので、生成器ができればそこに繋ぐ。生成器が
-難しい場合は **DOM操作フォールバック**（x.com の画面を実際に操作する）
+ヘッダを求めることがある。生成器は `extension/src/transactionId.js` に
+ある。@lami/x-client-transaction-id 0.3.3（MIT）の公開実装を、Service
+Worker 向けに移植したもの（DOM を使う部分だけ、シェル HTML の文字列
+解析に置き換え。計算は同じ）。x.com のアプリシェルから verification
+鍵と ondemand.s を取り、アニメーション鍵を導いて SHA-256＋XOR で
+組み立てる。background が `getTransactionId` として差し込み済みで、
+`xClient.js` が書き込みのたびに付ける。生成に失敗したらヘッダ無しで
+送る（従来の動作にフォールバック）ので、生成器の不調で投稿自体が
+止まることはない。403 の文言は「ヘッダ付きで拒否されたか」「生成に
+失敗してヘッダ無しで拒否されたか」で分かれる。
+
+未検証の点：シェル（https://x.com/i/jf/）の取得は、ログインしていない
+ブラウザだとログイン画面に回されることがある。拡張の background から
+の fetch がシェルを返すかどうかは、実アカウントでの試運転（ブラウザ
+での一括投稿の再試行）で確認する。シェルが取れなければ生成器は
+null を返し、ヘッダ無しの従来動作になる。その場合は、ログイン済みの
+x.com タブからシェル HTML をもらう content script 経由の取得を検討する。
+生成器が難しい場合は **DOM操作フォールバック**（x.com の画面を実際に操作する）
 を検討する。実アカウントでの初回試運転で、書き込みが通るかどうかが
 最初に分かる（`extension/README.md` の試運転手順を参照）。
 

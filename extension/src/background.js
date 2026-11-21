@@ -17,8 +17,15 @@ importScripts(
   'queryIds.js',
   'session.js',
   'xClient.js',
+  'transactionId.js',
   'dispatch.js',
 );
+
+// x-client-transaction-id の生成器。初期化は初回の書き込み時に遅延し、
+// 失敗したら null を返してヘッダ無しで送る（従来の動作にフォールバック）。
+const transactionIdGenerator = XManagerTransactionId.createGenerator({
+  fetchImpl: fetch,
+});
 
 function resultMessage(jobId, outcome) {
   return {
@@ -98,8 +105,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           fetchImpl: fetch,
           storage: chrome.storage.local,
         }),
-      // x-client-transaction-id の生成器はまだ無い（後で差し込むための口）。
-      getTransactionId: null,
+      // x-client-transaction-id の生成器（transactionId.js）。
+      getTransactionId: (method, url) => transactionIdGenerator(method, url),
     };
     XManagerSessions.get(message.accountId)
       .then((session) => {

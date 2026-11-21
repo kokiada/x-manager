@@ -120,13 +120,14 @@ function makeCtx(opts: {
   chrome: AnyRecord;
   fetch: AnyRecord;
   resolveQueryId?: (op: string) => Promise<string | null>;
+  getTransactionId?: ((method: string, url: string) => Promise<string | null>) | null;
 }) {
   return {
     sessions: opts.sessions,
     chrome: opts.chrome,
     fetchImpl: opts.fetch,
     resolveQueryId: opts.resolveQueryId || (async () => 'QID'),
-    getTransactionId: null,
+    getTransactionId: opts.getTransactionId ?? null,
   };
 }
 
@@ -440,6 +441,78 @@ describe('投稿（dispatch + xClient）', () => {
     expect(call.opts.headers['x-twitter-auth-type']).toBe('OAuth2Session');
     const body = JSON.parse(call.opts.body);
     expect(body.variables.tweet_text).toBe('こんにちは');
+  });
+
+  it('getTransactionId があれば書き込みに x-client-transaction-id を付ける', async () => {
+    const { sandbox, fetchStub } = setup([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            data: { create_tweet: { tweet_results: { result: { __typename: 'Tweet', rest_id: '222' } } } },
+          }),
+      },
+    ]);
+    const chromeStub = makeChromeStub();
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({
+      sessions,
+      chrome: chromeStub,
+      fetch: fetchStub,
+      getTransactionId: async () => 'TX-TEST-123',
+    });
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'j-tx',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: { content: { text: 'ヘッダ付き' } },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('222');
+    const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(call.opts.headers['x-client-transaction-id']).toBe('TX-TEST-123');
+  });
+
+  it('生成器が失敗してもヘッダ無しで投稿を送る', async () => {
+    const { sandbox, fetchStub } = setup([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            data: { create_tweet: { tweet_results: { result: { __typename: 'Tweet', rest_id: '333' } } } },
+          }),
+      },
+    ]);
+    const chromeStub = makeChromeStub();
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({
+      sessions,
+      chrome: chromeStub,
+      fetch: fetchStub,
+      getTransactionId: async () => {
+        throw new Error('init failed');
+      },
+    });
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'j-tx-fail',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: { content: { text: 'ヘッダ無しでも送る' } },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('333');
+    const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(call.opts.headers['x-client-transaction-id']).toBeUndefined();
   });
 
   it('ツリーは前の投稿への返信として順に投稿する', async () => {
@@ -1010,7 +1083,7 @@ describe('投稿の失敗が見える形で返る（再現テスト）', () => {
     ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('ct0') });
   });
 
-  it('書き込みの403は「未対応」と分かる文言で返す', async () => {
+  it('書き込みの403はトランザクションIDの生成失敗が分かる文言で返す', async () => {
     const chromeStub = makeChromeStub();
     const fetchStub = makeFetchStub([
       { match: GRAPHQL('CreateTweet'), handle: () => jsonResponse(403, {}) },
@@ -1033,7 +1106,7 @@ describe('投稿の失敗が見える形で返る（再現テスト）', () => {
       ),
     ).rejects.toMatchObject({
       code: 'x_error',
-      message: expect.stringContaining('未対応'),
+      message: expect.stringContaining('トランザクションIDの生成に失敗'),
     });
   });
 
@@ -1261,7 +1334,7 @@ describe('background の配線', () => {
       new URL('../../extension/src/background.js', import.meta.url),
       'utf8',
     );
-    for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'dispatch.js']) {
+    for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'transactionId.js', 'dispatch.js']) {
       expect(background).toContain(`'${file}'`);
     }
     const manifest = JSON.parse(
