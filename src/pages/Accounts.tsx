@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../db/db';
 import type { Account, NewAccount } from '../db/types';
-import { createAccount, recordFollowerHistory, updateAccount } from '../db/repository';
+import { createAccount, createAccountWithId, recordFollowerHistory, updateAccount } from '../db/repository';
+import { planSessionImport } from '../lib/sessionImport';
 import { executor } from '../executor';
 import { accountsToCsv } from '../lib/accountCsv';
 import { downloadTextFile } from '../lib/csv';
@@ -38,8 +39,9 @@ export function Accounts() {
   const [modal, setModal] = useState<ModalState>({ kind: 'none' });
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
-  const { mode, linkedIds, refresh: refreshLinked } = useLinkedAccounts();
+  const { mode, linkedIds, linkedSessions, refresh: refreshLinked } = useLinkedAccounts();
   const [refreshingLink, setRefreshingLink] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const groupName = (id: string | null) =>
     id ? (groups?.find((g) => g.id === id)?.name ?? '—') : '未分類';
@@ -91,6 +93,48 @@ export function Accounts() {
     }
     setBulkProgress(null);
     toast.push(`${done}件のアカウントチェックが完了しました`, 'ok');
+  };
+
+  /**
+   * 拡張で連携済みのセッションを台帳に取り込む。連携だけでは台帳に
+   * アカウントが増えないため、このボタンが無いと「連携したのに一覧に
+   * 出ない」ように見える。セッションのIDをそのまま台帳のIDにするので、
+   * 取り込んだ直後から「連携済み」バッジが付く。
+   */
+  const importLinkedSessions = async () => {
+    if (linkedSessions === null) return;
+    setImporting(true);
+    try {
+      const plan = planSessionImport(
+        linkedSessions,
+        (accounts ?? []).map((a) => a.id),
+      );
+      for (const item of plan.toCreate) {
+        await createAccountWithId(item.accountId, {
+          handle: item.handle,
+          displayName: item.handle,
+          groupId: null,
+          proxyGroupId: null,
+          status: 'logged_in',
+          followers: 0,
+          following: 0,
+          notifications: 0,
+          dmCount: 0,
+          searchBan: 'unknown',
+        });
+      }
+      toast.push(
+        plan.toCreate.length > 0
+          ? `${plan.toCreate.length}件を取り込みました（${plan.alreadyLinked}件は連携済みでした）`
+          : `取り込むアカウントはありませんでした（${plan.alreadyLinked}件は連携済みでした）`,
+        'ok',
+      );
+      await refreshLinked();
+    } catch {
+      toast.push('拡張の連携の取り込みに失敗しました', 'err');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const submitForm = async (input: NewAccount) => {
@@ -159,19 +203,27 @@ export function Accounts() {
         />
         <span className="spacer" />
         {mode === 'extension' && (
-          <Button
-            onClick={async () => {
-              setRefreshingLink(true);
-              try {
-                await refreshLinked();
-              } finally {
-                setRefreshingLink(false);
-              }
-            }}
-            disabled={refreshingLink}
-          >
-            {refreshingLink ? '確認中…' : '連携状態を更新'}
-          </Button>
+          <>
+            <Button
+              onClick={importLinkedSessions}
+              disabled={importing || linkedSessions === null}
+            >
+              {importing ? '取り込み中…' : '拡張の連携を取り込む'}
+            </Button>{' '}
+            <Button
+              onClick={async () => {
+                setRefreshingLink(true);
+                try {
+                  await refreshLinked();
+                } finally {
+                  setRefreshingLink(false);
+                }
+              }}
+              disabled={refreshingLink}
+            >
+              {refreshingLink ? '確認中…' : '連携状態を更新'}
+            </Button>
+          </>
         )}
         {bulkProgress ? (
           <span className="progress-line">{bulkProgress}</span>

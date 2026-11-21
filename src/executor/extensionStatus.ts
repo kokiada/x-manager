@@ -1,4 +1,5 @@
 import { WindowPostMessageTransport, type ExtensionTransport } from './transport';
+import type { ExtensionSession } from './protocol';
 
 /** 拡張の接続状態（設定画面の表示用）。 */
 export interface ExtensionConnection {
@@ -8,6 +9,8 @@ export interface ExtensionConnection {
   version?: number;
   /** 拡張自体の版（接続時のみ）。 */
   extensionVersion?: string;
+  /** 拡張にセッション登録済みのアカウント（ID＋ハンドル、接続時のみ）。 */
+  linkedSessions?: ExtensionSession[];
   /** 拡張にセッション登録済みのアカウントID（接続時のみ）。 */
   linkedAccountIds?: string[];
   /** 未接続時の理由（日本語）。 */
@@ -23,12 +26,13 @@ export async function checkExtensionConnection(
 ): Promise<ExtensionConnection> {
   try {
     const handshake = await transport.ping();
-    const linkedAccountIds = await transport.listSessions();
+    const linkedSessions = await transport.listSessions();
     return {
       connected: true,
       version: handshake.version,
       extensionVersion: handshake.extensionVersion,
-      linkedAccountIds,
+      linkedSessions,
+      linkedAccountIds: linkedSessions.map((s) => s.accountId),
     };
   } catch (err) {
     return {

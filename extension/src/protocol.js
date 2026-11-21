@@ -55,7 +55,38 @@ function isJobMessage(value) {
   );
 }
 
+/**
+ * 連携一覧を `{accountId, handle}` の配列に正規化する。
+ * 正本の `normalizeSessionsMessage` と同じ規則：旧形式の ID だけの
+ * 配列はハンドル null に変換し、ID の空文字・重複は落とす。
+ * background が `list-sessions` の応答を作るときに使う。
+ */
+function normalizeSessions(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.sessions)
+      ? value.sessions
+      : isRecord(value) && Array.isArray(value.accountIds)
+        ? value.accountIds.map((id) => ({ accountId: id, handle: null }))
+        : [];
+  const seen = new Set();
+  const out = [];
+  for (const s of raw) {
+    if (!isRecord(s) || typeof s.accountId !== 'string' || s.accountId.length === 0) continue;
+    if (seen.has(s.accountId)) continue;
+    seen.add(s.accountId);
+    out.push({
+      accountId: s.accountId,
+      handle:
+        typeof s.handle === 'string' && s.handle.trim().length > 0
+          ? s.handle.replace(/^@/, '').trim()
+          : null,
+    });
+  }
+  return out;
+}
+
 if (typeof self !== 'undefined') {
   self.XManagerProtocol = XManagerProtocol;
-  self.XManagerProtocolHelpers = { isRecord, isPageMessage, isJobMessage };
+  self.XManagerProtocolHelpers = { isRecord, isPageMessage, isJobMessage, normalizeSessions };
 }

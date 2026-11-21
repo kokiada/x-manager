@@ -82,17 +82,32 @@ export interface HelloAckMessage {
   extensionVersion: string;
 }
 
+/** 拡張に連携済みの1アカウント（セッション）。 */
+export interface ExtensionSession {
+  /** アプリ側のアカウントID（拡張のセッションキー）。 */
+  accountId: string;
+  /** Xハンドル（@なし）。ポップアップで未入力なら null。 */
+  handle: string | null;
+}
+
 /** アプリ → 拡張：連携済みアカウントIDの一覧要求。 */
 export interface ListSessionsMessage {
   source: typeof PAGE_SOURCE;
   kind: 'list-sessions';
 }
 
-/** 拡張 → アプリ：連携済みアカウントIDの一覧。 */
+/** 拡張 → アプリ：連携済みアカウントの一覧。 */
 export interface SessionsMessage {
   source: typeof EXTENSION_SOURCE;
   kind: 'sessions';
-  accountIds: string[];
+  /**
+   * 連携済みセッション（ID＋ハンドル）。旧版の拡張はこれが無く
+   * `accountIds` だけを返すので、受け取り側は両方に対応する
+   * （normalizeSessionsMessage 参照）。
+   */
+  sessions?: ExtensionSession[];
+  /** 旧形式：連携済みアカウントIDの一覧（後方互換のため残す）。 */
+  accountIds?: string[];
 }
 
 /** アプリ → 拡張：window 経由で送るメッセージ。 */
@@ -144,12 +159,62 @@ export function isJobResult(value: unknown): value is ExtensionJobResult & {
   );
 }
 
-export function isSessionsMessage(value: unknown): value is SessionsMessage {
+/**
+ * sessions 項目の形だけを見る。IDが空のものもここでは通す
+ * （normalizeSessionsMessage が落とす）。1件の壊れた項目で
+ * 一覧全体を弾かないための緩い判定。
+ */
+function isExtensionSessionShape(value: unknown): value is ExtensionSession {
   return (
     isRecord(value) &&
-    value.source === EXTENSION_SOURCE &&
-    value.kind === 'sessions' &&
-    Array.isArray(value.accountIds) &&
-    value.accountIds.every((id) => typeof id === 'string')
+    typeof value.accountId === 'string' &&
+    (value.handle === null || value.handle === undefined || typeof value.handle === 'string')
   );
+}
+
+/**
+ * sessions メッセージかどうか。新形式（`sessions`：ID＋ハンドル）と
+ * 旧形式（`accountIds`：IDだけ）の両方を受け付ける。
+ */
+export function isSessionsMessage(value: unknown): value is SessionsMessage {
+  if (!isRecord(value) || value.source !== EXTENSION_SOURCE || value.kind !== 'sessions') {
+    return false;
+  }
+  if (value.sessions !== undefined) {
+    return Array.isArray(value.sessions) && value.sessions.every(isExtensionSessionShape);
+  }
+  return (
+    Array.isArray(value.accountIds) && value.accountIds.every((id) => typeof id === 'string')
+  );
+}
+
+/**
+ * sessions メッセージを `ExtensionSession[]` に正規化する。
+ * 新形式はそのまま（ハンドルは空文字・未入力を null に揃える）。
+ * 旧形式（`accountIds` だけ）はハンドル null として変換する。
+ * 壊れた項目（IDが空など）は落とす。同一IDの重複は最初のものを残す。
+ */
+export function normalizeSessionsMessage(value: unknown): ExtensionSession[] {
+  if (!isSessionsMessage(value)) return [];
+  const sessions: ExtensionSession[] = [];
+  if (value.sessions !== undefined) {
+    for (const s of value.sessions) {
+      if (s.accountId.length === 0) continue;
+      const handle =
+        typeof s.handle === 'string' && s.handle.trim().length > 0
+          ? s.handle.replace(/^@/, '').trim()
+          : null;
+      sessions.push({ accountId: s.accountId, handle });
+    }
+  } else if (value.accountIds !== undefined) {
+    for (const id of value.accountIds) {
+      if (typeof id === 'string' && id.length > 0) sessions.push({ accountId: id, handle: null });
+    }
+  }
+  const seen = new Set<string>();
+  return sessions.filter((s) => {
+    if (seen.has(s.accountId)) return false;
+    seen.add(s.accountId);
+    return true;
+  });
 }

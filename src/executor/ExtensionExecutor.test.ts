@@ -27,7 +27,7 @@ function fakeTransport(
   return {
     sent,
     ping: async () => ({ version: 1, extensionVersion: '0.1.0' }),
-    listSessions: async () => ['acc-1'],
+    listSessions: async () => [{ accountId: 'acc-1', handle: 'testuser' }],
     sendJob: async (job) => {
       sent.push(job);
       return handler(job);

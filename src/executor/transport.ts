@@ -6,8 +6,10 @@ import {
   isHelloAck,
   isJobResult,
   isSessionsMessage,
+  normalizeSessionsMessage,
   type ExtensionJob,
   type ExtensionJobResult,
+  type ExtensionSession,
   type PageMessage,
 } from './protocol';
 
@@ -45,8 +47,8 @@ export interface ExtensionTransport {
   ping(timeoutMs?: number): Promise<ExtensionHandshake>;
   /** ジョブを1件送り、結果を待つ。 */
   sendJob(job: ExtensionJob): Promise<ExtensionJobResult>;
-  /** 拡張に連携済みのアカウントID一覧を聞く。 */
-  listSessions(): Promise<string[]>;
+  /** 拡張に連携済みのアカウント（ID＋ハンドル）一覧を聞く。 */
+  listSessions(): Promise<ExtensionSession[]>;
 }
 
 /** window.postMessage 経由で content script と話す輸送層。 */
@@ -131,7 +133,7 @@ export class WindowPostMessageTransport implements ExtensionTransport {
     return result;
   }
 
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<ExtensionSession[]> {
     const reply = await this.request(
       { source: PAGE_SOURCE, kind: 'list-sessions' },
       isSessionsMessage,
@@ -141,6 +143,7 @@ export class WindowPostMessageTransport implements ExtensionTransport {
       if (err instanceof ExtensionTimeoutError) throw new ExtensionNotConnectedError();
       throw err;
     });
-    return reply.accountIds;
+    // 新形式（sessions）と旧形式（accountIds）のどちらが来ても同じ形に揃える。
+    return normalizeSessionsMessage(reply);
   }
 }

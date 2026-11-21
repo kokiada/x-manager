@@ -13,11 +13,20 @@ function fakeTransport(overrides: Partial<ExtensionTransport>): ExtensionTranspo
 
 describe('checkExtensionConnection', () => {
   it('接続時は版と連携アカウント一覧を返す', async () => {
-    const transport = fakeTransport({ listSessions: async () => ['a', 'b'] });
+    const transport = fakeTransport({
+      listSessions: async () => [
+        { accountId: 'a', handle: 'foo' },
+        { accountId: 'b', handle: null },
+      ],
+    });
     await expect(checkExtensionConnection(transport)).resolves.toEqual({
       connected: true,
       version: 1,
       extensionVersion: '0.1.0',
+      linkedSessions: [
+        { accountId: 'a', handle: 'foo' },
+        { accountId: 'b', handle: null },
+      ],
       linkedAccountIds: ['a', 'b'],
     });
   });

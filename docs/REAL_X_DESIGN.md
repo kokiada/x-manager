@@ -110,13 +110,37 @@ GraphQL の query ID は X の更新で数週間単位で変わる。`extension/
 - ハンドシェイク：アプリ `hello` → 拡張 `hello-ack`（プロトコル版・拡張の版を返す）
 - ジョブ：`{id, method, accountId, accountHandle, payload}` →
   結果 `{id, ok, data?, error?, code?, at}`（`id` で相関を取る）
-- 連携一覧：`list-sessions` → `{accountIds}`
+- 連携一覧：`list-sessions` → `{sessions: [{accountId, handle}]}`（旧形式
+  `{accountIds}` も後方互換で受け付ける）
 - メソッドは Executor と1対1：`executePost / deletePost / executeAction /
   checkAccount / checkSearchBan / fetchPostAnalytics / fetchNotifications`
 - 失敗の分類 `code`：`not_implemented`（未実装）／`no_session`（未連携）／
   `rate_limited`／`x_error`／`unknown`
 
 タイムアウト：ハンドシェイク 3秒、ジョブ 30秒。
+
+## データの置き場所と連携の流れ
+
+利用者が「拡張で連携したのにアプリの一覧に出ない」と戸惑ったため、
+仕組みをここに明記する。**保存場所は2つあり、自動では同期しない。**
+
+- **アプリの台帳**：Webアプリの IndexedDB（アカウント・グループ・設定など）。
+  オリジンごとに別物になる。`npm run dev` の `http://localhost:5173` と、
+  Electron アプリ版の `http://127.0.0.1:47831` は**別のデータ**を持つ。
+  どちらか一方に決めて使うこと。
+- **拡張の連携**：Chrome 拡張の `chrome.storage.local`
+  （`{accountId: {authToken, handle, linkedAt}}`）。
+  Chrome と Electron アプリ版でも別物。Chrome 側で登録した連携は
+  Electron 版には引き継がれず、逆も同じ。連携画面もそれぞれ別に開く。
+
+想定する流れ：
+
+1. アプリでアカウントを追加する（または、まず拡張で連携だけ済ませる）
+2. 拡張のポップアップで、そのアカウントのIDと auth_token を登録する
+3. アプリのアカウント画面で「拡張の連携を取り込む」を押す
+   → 拡張の連携のうち台帳に無いものを、セッションのIDそのままで台帳へ追加する
+   （ハンドルが未入力のセッションは `linked-<IDの先頭8文字>` の仮ハンドルで作り、後で編集できる）
+4. 一覧に「連携済み」バッジが付けば、実行方法「拡張」での操作が使える
 
 ## セキュリティモデル
 

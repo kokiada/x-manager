@@ -94,7 +94,25 @@ describe('WindowPostMessageTransport', () => {
     await expect(promise).resolves.toMatchObject({ id: 'job-42', ok: true });
   });
 
-  it('listSessions は sessions メッセージを返す', async () => {
+  it('listSessions は sessions メッセージを正規化して返す（新形式）', async () => {
+    const win = fakeWindow();
+    const transport = new WindowPostMessageTransport(win);
+    const promise = transport.listSessions();
+    win.dispatch({
+      source: EXTENSION_SOURCE,
+      kind: 'sessions',
+      sessions: [
+        { accountId: 'acc-1', handle: '@foo' },
+        { accountId: 'acc-2', handle: null },
+      ],
+    });
+    await expect(promise).resolves.toEqual([
+      { accountId: 'acc-1', handle: 'foo' },
+      { accountId: 'acc-2', handle: null },
+    ]);
+  });
+
+  it('listSessions は旧形式（accountIds だけ）も正規化して返す', async () => {
     const win = fakeWindow();
     const transport = new WindowPostMessageTransport(win);
     const promise = transport.listSessions();
@@ -103,7 +121,7 @@ describe('WindowPostMessageTransport', () => {
       kind: 'sessions',
       accountIds: ['acc-1'],
     });
-    await expect(promise).resolves.toEqual(['acc-1']);
+    await expect(promise).resolves.toEqual([{ accountId: 'acc-1', handle: null }]);
   });
 
   it('送信元が違うメッセージは無視する', async () => {

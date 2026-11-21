@@ -51,6 +51,18 @@ export async function createAccount(input: NewAccount): Promise<Account> {
   return account;
 }
 
+/**
+ * 指定したIDでアカウントを作る。拡張の連携セッションを取り込むときに
+ * 使う：セッションキーと同じIDにしないと連携バッジが付かない。
+ * 同じIDが既にある場合は Dexie の add が重複キーで失敗する。
+ */
+export async function createAccountWithId(id: string, input: NewAccount): Promise<Account> {
+  const now = Date.now();
+  const account: Account = { ...input, id, createdAt: now, updatedAt: now };
+  await db.accounts.add(account);
+  return account;
+}
+
 export async function updateAccount(
   id: string,
   patch: Partial<Omit<Account, 'id' | 'createdAt'>>,

@@ -47,20 +47,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
-  // 連携済みアカウントの一覧。
+  // 連携済みアカウントの一覧（ID＋ハンドル）。
+  // `sessions` が新形式。旧版のアプリ向けに `accountIds` も残す。
   if (message.kind === 'list-sessions' && message.source === XManagerProtocol.PAGE_SOURCE) {
     XManagerSessions.list()
       .then((sessions) => {
+        const normalized = XManagerProtocolHelpers.normalizeSessions(sessions);
         sendResponse({
           source: XManagerProtocol.EXTENSION_SOURCE,
           kind: 'sessions',
-          accountIds: sessions.map((s) => s.accountId),
+          sessions: normalized,
+          accountIds: normalized.map((s) => s.accountId),
         });
       })
       .catch((err) => {
         sendResponse({
           source: XManagerProtocol.EXTENSION_SOURCE,
           kind: 'sessions',
+          sessions: [],
           accountIds: [],
           error: err instanceof Error ? err.message : String(err),
         });

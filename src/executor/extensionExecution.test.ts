@@ -824,6 +824,78 @@ describe('取得系（dispatch + xClient）', () => {
 });
 
 describe('background の配線', () => {
+  it('list-sessions は sessions（ID＋ハンドル）と accountIds（後方互換）を返す', async () => {
+    // background.js を vm で読み込む。importScripts は読み込んだ
+    // ファイルを同じコンテキストで実行するだけの差し替え。
+    let listener: ((message: unknown, sender: unknown, sendResponse: (r: unknown) => void) => boolean) | null =
+      null;
+    const storageData: Record<string, unknown> = {
+      'xmanager.sessions.v1': {
+        acc1: { authToken: 'x'.repeat(40), handle: 'foo', linkedAt: 1 },
+        acc2: { authToken: 'y'.repeat(40), handle: '', linkedAt: 2 },
+      },
+    };
+    const chromeStub: AnyRecord = {
+      storage: {
+        local: {
+          get: async (key: string) =>
+            storageData[key] !== undefined ? { [key]: storageData[key] } : {},
+          set: async (obj: AnyRecord) => Object.assign(storageData, obj),
+        },
+      },
+      cookies: { set: async () => {}, get: async () => null },
+      runtime: {
+        onMessage: {
+          addListener: (fn: typeof listener) => {
+            listener = fn;
+          },
+        },
+      },
+    };
+    const sandbox: AnyRecord = {
+      console,
+      chrome: chromeStub,
+      fetch: async () => {
+        throw new Error('unexpected fetch');
+      },
+    };
+    sandbox.self = sandbox;
+    const ctx = createContext(sandbox);
+    sandbox.importScripts = (...files: string[]) => {
+      for (const file of files) {
+        runInContext(
+          readFileSync(new URL(`../../extension/src/${file}`, import.meta.url), 'utf8'),
+          ctx,
+          { filename: file },
+        );
+      }
+    };
+    runInContext(
+      readFileSync(new URL('../../extension/src/background.js', import.meta.url), 'utf8'),
+      ctx,
+      { filename: 'background.js' },
+    );
+    expect(listener).not.toBe(null);
+
+    const response = await new Promise<AnyRecord>((resolve) => {
+      const done = listener!(
+        { source: 'x-manager', kind: 'list-sessions' },
+        {},
+        (r: unknown) => resolve(r as AnyRecord),
+      );
+      expect(done).toBe(true);
+    });
+    expect(response).toMatchObject({
+      source: 'x-manager-extension',
+      kind: 'sessions',
+      sessions: [
+        { accountId: 'acc1', handle: 'foo' },
+        { accountId: 'acc2', handle: null },
+      ],
+      accountIds: ['acc1', 'acc2'],
+    });
+  });
+
   it('background.js が新しいモジュールを読み込み、manifest が必要なホストを許可する', () => {
     const background = readFileSync(
       new URL('../../extension/src/background.js', import.meta.url),
