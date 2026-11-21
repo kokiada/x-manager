@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>x-manager 実行役</title>
+<style>
+  body { width: 340px; margin: 0; padding: 12px 14px; font-family: system-ui, sans-serif; font-size: 13px; color: #1a1a1a; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 6px 0; line-height: 1.5; }
+  .note { color: #666; font-size: 12px; }
+  .row { display: flex; gap: 6px; margin: 8px 0; }
+  input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+  button { padding: 6px 12px; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
+  button.primary { background: #1d9bf0; border-color: #1d9bf0; color: #fff; }
+  ul { list-style: none; padding: 0; margin: 8px 0; }
+  li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid #eee; }
+  #status { min-height: 18px; color: #b3261e; }
+  #status.ok { color: #137333; }
+</style>
+</head>
+<body>
+  <h1>x-manager 実行役</h1>
+  <p class="note">アカウントの auth_token はこのブラウザの中（chrome.storage.local）にだけ保存されます。どこにも送信されません。</p>
+
+  <h2 style="font-size:13px;margin:12px 0 4px">連携中のアカウント</h2>
+  <ul id="sessions"><li>読み込み中…</li></ul>
+
+  <h2 style="font-size:13px;margin:12px 0 4px">アカウントを追加する</h2>
+  <div class="row">
+    <input id="account-id" placeholder="x-manager のアカウントID" autocomplete="off">
+  </div>
+  <div class="row">
+    <input id="handle" placeholder="@handle（任意）" autocomplete="off">
+  </div>
+  <div class="row">
+    <input id="auth-token" type="password" placeholder="auth_token（40文字）" autocomplete="off">
+  </div>
+  <div class="row">
+    <button id="add" class="primary" type="button">連携する</button>
+  </div>
+  <p id="status" role="status"></p>
+  <p class="note">アカウントIDは x-manager のアカウント詳細画面で確認できます。auth_token は X にログインしたブラウザの Cookie から取得します。</p>
+
+  <script src="protocol.js"></script>
+  <script src="sessionStore.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

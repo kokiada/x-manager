@@ -70,3 +70,17 @@
 - **自動投稿・自動操作**：ガッツの `automation.ts` は本線の `autoPost.ts` / `autoAction.ts` と機能が重複するため全体移植はせず、**決定論的スロット**の考えだけ取り入れた：`autoPostEngine` がルール＋日付をシードにした乱数でスロットを計算し、ティックごとに時刻が動く問題を解消した。`autoActionMatches` / `autoActionReactors` / `dailyCapReached` は本線の同等関数（`matchesKeywords` / `eligibleActingAccounts` / `dailyCapReached`）で既にカバー済み。
 - **チェック系サービス・通知**：ガッツの `checkService.ts`（CheckRun モデル）と `inboxItemsForCheck` は、本線の `banCheckService.ts`＋`notificationService.ts`（Executor 経由の取得・永続化）で既に同等以上に実現済みのため不採用。`AutomationRuleForm` の統合ルールモデルも、本線の自動投稿ルール／自動操作ルールを分けた設計を維持するため不採用。
 - **バックアップ**：ガッツの `backup.ts` は彼の6テーブル分で、本線のバックアップは既に v4 全11テーブルを対象済みのため不採用。
+
+## 9. 実X連携（REAL_X、2026-11-21〜）
+
+こうきくんの指示「全ての機能がXに連携して動作する状態にして」を受け、実行役を
+Chrome拡張にする方針で進める。詳細は `docs/REAL_X_DESIGN.md`。
+
+- **土台（完了）**：プロトコル（`src/executor/protocol.ts` が正本、拡張側はミラー）、
+  拡張の骨格（ハンドシェイク・セッション保管庫・ポップアップ・中継）、Webアプリ側の
+  `ExtensionExecutor`・接続確認・実行方法の切替（設定画面）。
+- **次の段階**：background での X 内部API呼び出し（投稿・削除・いいね／リポスト／
+  ブックマーク／フォロー・チェック系）、セッション切替の直列化、実アカウントでの疎通確認。
+- **その次**：分析・通知/DM取得の実装と、定期チェック・自動投稿・自動操作との結合確認。
+- **最後に利用者の手が必要**：拡張の読み込み、auth_token の登録、実行方法の切替、
+  実アカウントでの試運転。

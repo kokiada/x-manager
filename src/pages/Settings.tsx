@@ -9,6 +9,11 @@ import {
   PLAN_TIERS,
 } from '../db/types';
 import { getSettings, saveSettings } from '../db/repository';
+import {
+  checkExtensionConnection,
+  setExecutorMode,
+  type ExtensionConnection,
+} from '../executor';
 import { Button, useToast } from '../components/ui';
 
 function ScheduleFields({
@@ -69,7 +74,18 @@ export function Settings() {
 
   const [form, setForm] = useState<AppSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [extStatus, setExtStatus] = useState<ExtensionConnection | null>(null);
+  const [checkingExt, setCheckingExt] = useState(false);
   const initialized = useRef(false);
+
+  const checkExtension = async () => {
+    setCheckingExt(true);
+    try {
+      setExtStatus(await checkExtensionConnection());
+    } finally {
+      setCheckingExt(false);
+    }
+  };
 
   useEffect(() => {
     if (initialized.current) return;
@@ -102,6 +118,7 @@ export function Settings() {
     try {
       await saveSettings({ ...form, maxConcurrentBrowsers: browsersClamped });
       setForm({ ...form, maxConcurrentBrowsers: browsersClamped });
+      setExecutorMode(form.executorMode);
       toast.push('設定を保存しました', 'ok');
     } catch {
       toast.push('設定の保存に失敗しました', 'err');
@@ -153,6 +170,59 @@ export function Settings() {
             <span className="plan-price">¥{tier.monthlyPriceJpy.toLocaleString('ja-JP')} / 月</span>
           </label>
         ))}
+      </div>
+
+      <h2 className="section-title">実行方法（X連携）</h2>
+      <p className="faded" style={{ fontSize: 13 }}>
+        投稿やチェックをどこで実行するかを選びます。「シミュレータ」は本物のXには届かない見本の動きです。
+        「拡張」は Chrome 拡張「x-manager 実行役」に実際の操作を任せます（拡張の読み込みとアカウントの
+        auth_token 登録は、拡張のポップアップで行います。詳しくは <code>extension/README.md</code>）。
+      </p>
+      <div className="plan-list" role="radiogroup" aria-label="実行方法">
+        <label className={`plan-row ${form.executorMode === 'simulator' ? 'selected' : ''}`}>
+          <input
+            type="radio"
+            name="executor-mode"
+            checked={form.executorMode === 'simulator'}
+            onChange={() => setForm({ ...form, executorMode: 'simulator' })}
+          />
+          <span>
+            <strong>シミュレータ</strong>（既定）
+          </span>
+          <span className="faded" style={{ fontSize: 12.5 }}>
+            本物のXには届きません
+          </span>
+        </label>
+        <label className={`plan-row ${form.executorMode === 'extension' ? 'selected' : ''}`}>
+          <input
+            type="radio"
+            name="executor-mode"
+            checked={form.executorMode === 'extension'}
+            onChange={() => setForm({ ...form, executorMode: 'extension' })}
+          />
+          <span>
+            <strong>Chrome 拡張</strong>（実X操作）
+          </span>
+          <span className="faded" style={{ fontSize: 12.5 }}>
+            拡張が未接続のとき操作は失敗します
+          </span>
+        </label>
+      </div>
+      <div className="field">
+        <label>拡張の接続状態</label>
+        <p className="faded" style={{ fontSize: 13, margin: '4px 0 8px' }}>
+          {extStatus === null
+            ? 'まだ確認していません。'
+            : extStatus.connected
+              ? `接続済み（拡張 v${extStatus.extensionVersion}、連携アカウント ${extStatus.linkedAccountIds?.length ?? 0}件）`
+              : `未接続 — ${extStatus.error ?? '拡張が見つかりません'}`}
+        </p>
+        <Button onClick={checkExtension} disabled={checkingExt}>
+          {checkingExt ? '確認中…' : '接続を確認'}
+        </Button>
+        <div className="hint">
+          拡張を読み込んだ Chrome でこのアプリを開いているときに確認できます。拡張が未接続のまま「拡張」を選んで保存すると、操作はエラーになります（シミュレータには戻りません）。
+        </div>
       </div>
 
       <h2 className="section-title">ブラウザ</h2>

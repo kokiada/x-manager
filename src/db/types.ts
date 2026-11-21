@@ -130,9 +130,20 @@ export interface CheckSchedule {
   groupId: string | null;
 }
 
+/** 実行方法：シミュレータ（既定）か、Chrome 拡張による実X操作か。 */
+export type ExecutorMode = 'simulator' | 'extension';
+
 export interface AppSettings {
   /** Contracted plan, expressed as its account cap (see PLAN_TIERS). */
   planAccounts: number;
+  /**
+   * How operations are executed. 'simulator' (default) runs the whole
+   * app against a fake X; 'extension' delegates to the Chrome
+   * extension (docs/REAL_X_DESIGN.md). When 'extension' is selected
+   * but the extension is not connected, operations fail with a clear
+   * error instead of silently simulating.
+   */
+  executorMode: ExecutorMode;
   /**
    * Browsers kept open simultaneously （同時に開いておくブラウザ数）.
    * Default 20; cannot exceed the plan's account cap.
@@ -146,6 +157,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   planAccounts: 20,
+  executorMode: 'simulator',
   maxConcurrentBrowsers: 20,
   defaultIntervalSec: 5,
   accountCheck: { enabled: false, time: '09:00', groupId: null },

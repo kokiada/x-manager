@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ToastProvider } from './components/ui';
+import { getSettings } from './db/repository';
 import { seedIfEmpty } from './db/seed';
+import { setExecutorMode } from './executor';
 import { useReservationScheduler } from './hooks/useReservationScheduler';
 import { useScheduledEngines } from './hooks/useScheduledEngines';
 import { AccountDetail } from './pages/AccountDetail';
@@ -25,6 +27,12 @@ export default function App() {
         /* seeding is best-effort; the app still renders empty states */
       })
       .finally(() => setReady(true));
+    // 実行方法を保存済みの設定から復元する（失敗時はシミュレータのまま）。
+    getSettings()
+      .then((settings) => setExecutorMode(settings.executorMode))
+      .catch(() => {
+        /* keep the default simulator mode */
+      });
   }, []);
 
   // Fire due bulk-post reservations while the app is open (M2).
