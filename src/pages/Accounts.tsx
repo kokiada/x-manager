@@ -11,6 +11,8 @@ import { compactCount, checkedAtLabel } from '../lib/format';
 import { AccountForm } from '../components/AccountForm';
 import { GroupManager } from '../components/GroupManager';
 import { Button, Modal, StatusBadge, useToast } from '../components/ui';
+import { useLinkedAccounts } from '../hooks/useLinkedAccounts';
+import { isLinkedAccount } from '../lib/extensionLink';
 
 type ModalState =
   | { kind: 'none' }
@@ -31,6 +33,8 @@ export function Accounts() {
   const [modal, setModal] = useState<ModalState>({ kind: 'none' });
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const { mode, linkedIds, refresh: refreshLinked } = useLinkedAccounts();
+  const [refreshingLink, setRefreshingLink] = useState(false);
 
   const groupName = (id: string | null) =>
     id ? (groups?.find((g) => g.id === id)?.name ?? '—') : '未分類';
@@ -149,6 +153,21 @@ export function Accounts() {
           style={{ flex: '1 1 180px' }}
         />
         <span className="spacer" />
+        {mode === 'extension' && (
+          <Button
+            onClick={async () => {
+              setRefreshingLink(true);
+              try {
+                await refreshLinked();
+              } finally {
+                setRefreshingLink(false);
+              }
+            }}
+            disabled={refreshingLink}
+          >
+            {refreshingLink ? '確認中…' : '連携状態を更新'}
+          </Button>
+        )}
         {bulkProgress ? (
           <span className="progress-line">{bulkProgress}</span>
         ) : (
@@ -202,6 +221,16 @@ export function Accounts() {
             </span>
             <span className="cell-badge">
               <StatusBadge status={a.status} />
+              {mode === 'extension' && linkedIds !== null && (
+                <>
+                  {' '}
+                  {isLinkedAccount(linkedIds, a.id) ? (
+                    <span className="badge linked">連携済み</span>
+                  ) : (
+                    <span className="badge plain">未連携</span>
+                  )}
+                </>
+              )}
             </span>
             <span className="cell-meta faded" style={{ fontSize: 12.5 }}>
               {groupName(a.groupId)}

@@ -166,8 +166,14 @@ export const SEED_RANDOM_WORD_SETS: RandomWordSet[] = [
   { no: 2, words: ['行ってきます', '行ってらっしゃい'] },
 ];
 
-/** Populate the database with demo data when it is completely empty. */
+/**
+ * Populate the database with demo data when it is completely empty.
+ * Never re-seeds after the user cleared the demo data (Settings →
+ * 「デモデータを消去」 writes the `demoDataCleared` meta flag).
+ */
 export async function seedIfEmpty(): Promise<void> {
+  const cleared = await db.meta.get('demoDataCleared');
+  if (cleared?.value === 'true') return;
   const count = await db.accounts.count();
   if (count > 0) return;
   await db.transaction('rw', db.groups, db.proxyGroups, db.accounts, async () => {

@@ -10,6 +10,8 @@ import { executor } from '../executor';
 import { checkedAtLabel, fullCount, maskToken } from '../lib/format';
 import { AccountForm } from '../components/AccountForm';
 import { Button, Modal, StatusBadge, useToast } from '../components/ui';
+import { useLinkedAccounts } from '../hooks/useLinkedAccounts';
+import { isLinkedAccount } from '../lib/extensionLink';
 
 export function AccountDetail() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +29,18 @@ export function AccountDetail() {
 
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<'check' | 'ban' | null>(null);
+  const { mode, linkedIds } = useLinkedAccounts();
+  const linked = mode === 'extension' && isLinkedAccount(linkedIds ?? undefined, account?.id ?? '');
+
+  const copyAccountId = async () => {
+    if (!account) return;
+    try {
+      await navigator.clipboard.writeText(account.id);
+      toast.push('アカウントIDをコピーしました', 'ok');
+    } catch {
+      toast.push('コピーに失敗しました', 'err');
+    }
+  };
 
   if (account === undefined) return <p className="faded">読み込み中…</p>;
   if (account === null || !account) {
@@ -115,7 +129,20 @@ export function AccountDetail() {
       <div className="detail-grid">
         <div className="detail-cell">
           <div className="k">ステータス</div>
-          <div className="v"><StatusBadge status={account.status} /></div>
+          <div className="v">
+            <StatusBadge status={account.status} />{' '}
+            {linked && <span className="badge linked">連携済み</span>}
+          </div>
+        </div>
+        <div className="detail-cell">
+          <div className="k">アカウントID（拡張の連携用）</div>
+          <div className="v mono" style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>{account.id}</span>
+            <Button small onClick={copyAccountId}>
+              コピー
+            </Button>
+          </div>
+          <div className="hint">Chrome 拡張のポップアップにこのIDと auth_token を登録すると連携されます。</div>
         </div>
         <div className="detail-cell">
           <div className="k">サーチバン判定</div>

@@ -14,6 +14,7 @@ import {
   setExecutorMode,
   type ExtensionConnection,
 } from '../executor';
+import { clearDemoData, isDemoAccount } from '../lib/demoData';
 import { Button, useToast } from '../components/ui';
 
 function ScheduleFields({
@@ -71,12 +72,36 @@ export function Settings() {
   const toast = useToast();
   const accountCount = useLiveQuery(() => db.accounts.count(), [], undefined);
   const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), [], []);
+  const allAccounts = useLiveQuery(() => db.accounts.toArray(), [], undefined);
+  const demoAccountCount = allAccounts?.filter(isDemoAccount).length ?? 0;
 
   const [form, setForm] = useState<AppSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [extStatus, setExtStatus] = useState<ExtensionConnection | null>(null);
   const [checkingExt, setCheckingExt] = useState(false);
+  const [confirmClearDemo, setConfirmClearDemo] = useState(false);
+  const [clearingDemo, setClearingDemo] = useState(false);
   const initialized = useRef(false);
+
+  const clearDemo = async () => {
+    if (!confirmClearDemo) {
+      setConfirmClearDemo(true);
+      return;
+    }
+    setClearingDemo(true);
+    try {
+      const result = await clearDemoData();
+      setConfirmClearDemo(false);
+      toast.push(
+        `デモデータを消去しました（アカウント ${result.accountsRemoved}件）`,
+        'ok',
+      );
+    } catch {
+      toast.push('デモデータの消去に失敗しました', 'err');
+    } finally {
+      setClearingDemo(false);
+    }
+  };
 
   const checkExtension = async () => {
     setCheckingExt(true);
@@ -224,6 +249,33 @@ export function Settings() {
           拡張を読み込んだ Chrome でこのアプリを開いているときに確認できます。拡張が未接続のまま「拡張」を選んで保存すると、操作はエラーになります（シミュレータには戻りません）。
         </div>
       </div>
+
+      <h2 className="section-title">デモデータ</h2>
+      <p className="faded" style={{ fontSize: 13 }}>
+        初回起動時に入る見本のアカウント・グループ・テンプレートなどを消去します。
+        自分で追加したアカウントやデータは残ります。消去後は、空の状態でもデモデータは
+        再表示されません。
+        {demoAccountCount > 0
+          ? ` 現在、デモアカウントが ${demoAccountCount}件 あります。`
+          : ' 現在、デモデータはありません。'}
+      </p>
+      <Button
+        variant={confirmClearDemo ? 'danger' : 'default'}
+        onClick={clearDemo}
+        disabled={clearingDemo || demoAccountCount === 0}
+      >
+        {clearingDemo
+          ? '消去中…'
+          : confirmClearDemo
+            ? '本当に消去しますか？（もう一度押すと実行）'
+            : 'デモデータを消去'}
+      </Button>
+      {confirmClearDemo && (
+        <p className="faded" style={{ fontSize: 12.5, marginTop: 8 }}>
+          デモアカウントと、それに紐づく履歴（チェック結果・フォロワー推移・通知など）も
+          一緒に消えます。この操作は戻せません。
+        </p>
+      )}
 
       <h2 className="section-title">ブラウザ</h2>
       <div className="field">

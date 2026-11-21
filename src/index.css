@@ -249,6 +249,7 @@ button { font-family: inherit; }
 .badge.st-connection_error { color: var(--st-connection-error); }
 .badge.plain::before { display: none; }
 .badge.plain { color: var(--c-faded); }
+.badge.linked { color: var(--c-ok); }
 
 /* ---------- ledger (account list) ---------- */
 
