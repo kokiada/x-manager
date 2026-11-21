@@ -48,6 +48,21 @@ describe('buildPostContent', () => {
     expect(content.replyPermission).toBeUndefined();
   });
 
+  it('carries the community ID only for community posts', () => {
+    const community = {
+      ...emptyPayload(),
+      segments: ['x'],
+      targetType: 'community' as const,
+      communityId: '1700000000000000000',
+    };
+    const { content } = buildPostContent(community, ['x']);
+    expect(content.communityId).toBe('1700000000000000000');
+    expect(content.targetType).toBe('community');
+
+    const normal = { ...emptyPayload(), segments: ['x'], communityId: '1700000000000000000' };
+    expect(buildPostContent(normal, ['x']).content.communityId).toBeUndefined();
+  });
+
   it('attaches no media when a poll is present', () => {
     const payload = {
       ...emptyPayload(),

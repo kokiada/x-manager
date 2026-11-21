@@ -88,11 +88,23 @@ function base64ToBytes(base64) {
 async function doPost(client, auth, job, ctx) {
   const errors = self.XManagerErrors;
   const content = job.payload.content || {};
+  // コミュニティ投稿：ID は数字のみ（x.com/i/communities/<数字>）。
+  // 画面側でも必須チェックがあるが、拡張側でも必ず検査する。
+  const communityId =
+    content.targetType === 'community' ? String(content.communityId || '').trim() : undefined;
   if (content.targetType === 'community') {
-    throw errors.makeError(
-      'not_implemented',
-      'コミュニティへの投稿はまだ未対応です。',
-    );
+    if (!communityId) {
+      throw errors.makeError(
+        'x_error',
+        'コミュニティIDが指定されていません。投稿画面でコミュニティIDを入力してください。',
+      );
+    }
+    if (!/^\d+$/.test(communityId)) {
+      throw errors.makeError(
+        'x_error',
+        'コミュニティIDは数字のみで入力してください。コミュニティのURL（x.com/i/communities/数字）の数字部分です。',
+      );
+    }
   }
   if (typeof content.text !== 'string' || !content.text.trim()) {
     // 本文が無くてもメディアがあれば投稿できる（Xの仕様）。
@@ -134,13 +146,16 @@ async function doPost(client, auth, job, ctx) {
     replyToId,
     replyPermission: content.replyPermission,
     mediaIds,
+    communityId,
   });
   const threadPostIds = [];
   let prevId = first.postId;
   const continuations = Array.isArray(content.threadTexts) ? content.threadTexts : [];
   for (const text of continuations) {
     try {
-      const next = await client.postTweet(auth, { text, replyToId: prevId });
+      // ツリーの続きも同じコミュニティへの投稿（Web 版と同じく
+      // 各ポストに community_id を付ける）。
+      const next = await client.postTweet(auth, { text, replyToId: prevId, communityId });
       threadPostIds.push(next.postId);
       prevId = next.postId;
     } catch (err) {

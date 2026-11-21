@@ -236,7 +236,7 @@ const XManagerXClient = {
 
     // ---- 書き込み ----
 
-    async function postTweet(auth, { text, replyToId, replyPermission, mediaIds }) {
+    async function postTweet(auth, { text, replyToId, replyPermission, mediaIds, communityId }) {
       const variables = {
         tweet_text: text,
         reply: replyToId
@@ -249,11 +249,29 @@ const XManagerXClient = {
         dark: false,
         semantic_annotation_ids: [],
       };
+      // コミュニティ投稿：CreateTweet の変数に community_id を付ける
+      // （X API v2 の POST /2/tweets と同じ名前。公開クライアント
+      // twikit も CreateTweet に community_id を渡す）。無い場合は
+      // 付けない（通常投稿と変わらない）。
+      if (communityId) variables.community_id = communityId;
       if (replyPermission && replyPermission !== 'everyone') {
         // 会話制御。Web 版が送る項目（未検証のため、無視されても動く）。
         variables.reply_settings = replyPermission;
       }
-      const data = await graphql(auth, 'CreateTweet', variables, 'POST');
+      let data;
+      try {
+        data = await graphql(auth, 'CreateTweet', variables, 'POST');
+      } catch (err) {
+        // X がコミュニティ絡みのエラーを返した場合は、原因が分かる
+        // 日本語にする（ID違い・メンバーでない等）。それ以外はそのまま。
+        if (err && /community/i.test(err.message || '')) {
+          throw errors.makeError(
+            'x_error',
+            'コミュニティが見つからないか、このコミュニティへの投稿権限がありません。コミュニティIDが正しいか、メンバーかどうかを確認してください。',
+          );
+        }
+        throw err;
+      }
       const result = data?.create_tweet?.tweet_results?.result;
       const tweet = result?.__typename === 'TweetWithVisibilityResults' ? result.tweet : result;
       const postId = tweet?.rest_id;

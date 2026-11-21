@@ -562,20 +562,148 @@ describe('投稿（dispatch + xClient）', () => {
     expect(JSON.parse(calls[2].opts.body).variables.reply.in_reply_to_status_id).toBe('102');
   });
 
-  it('コミュニティ投稿は not_implemented で失敗する', async () => {
+  it('コミュニティ投稿：CreateTweet の変数に community_id を付ける', async () => {
+    const { sandbox, ctx, fetchStub } = setup([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            data: { create_tweet: { tweet_results: { result: { __typename: 'Tweet', rest_id: '111' } } } },
+          }),
+      },
+    ]);
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'jc1',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: { content: { text: 'コミュニティへ', targetType: 'community', communityId: '1700000000000000000' } },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('111');
+    const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(JSON.parse(call.opts.body).variables.community_id).toBe('1700000000000000000');
+    expect(JSON.parse(call.opts.body).variables.tweet_text).toBe('コミュニティへ');
+  });
+
+  it('コミュニティ投稿：ツリーの続きにも community_id を付ける', async () => {
+    let n = 0;
+    const { sandbox, ctx, fetchStub } = setup([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            data: {
+              create_tweet: {
+                tweet_results: { result: { __typename: 'Tweet', rest_id: String(200 + ++n) } },
+              },
+            },
+          }),
+      },
+    ]);
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'jc2',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: {
+          content: {
+            text: '1段目',
+            targetType: 'community',
+            communityId: '1700000000000000000',
+            threadTexts: ['2段目'],
+          },
+        },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('201');
+    expect(data.threadPostIds).toEqual(['202']);
+    const calls = fetchStub.calls.filter((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(JSON.parse(call.opts.body).variables.community_id).toBe('1700000000000000000');
+    }
+  });
+
+  it('コミュニティ投稿：IDが無い・数字でない場合は日本語エラーで止める', async () => {
     const { sandbox, ctx } = setup([]);
     await expect(
       sandbox.XManagerDispatch.handleJob(
         {
-          id: 'j4',
+          id: 'jc3',
           method: 'executePost',
           accountId: 'a',
           accountHandle: 'alice',
-          payload: { content: { text: 'x', targetType: 'community', communityId: '1' } },
+          payload: { content: { text: 'x', targetType: 'community' } },
         },
         ctx,
       ),
-    ).rejects.toMatchObject({ code: 'not_implemented' });
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('コミュニティIDが指定されていません') });
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jc4',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: { content: { text: 'x', targetType: 'community', communityId: 'my-community' } },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'x_error', message: expect.stringContaining('数字のみ') });
+  });
+
+  it('コミュニティ投稿：Xがコミュニティ絡みのエラーを返したら権限が分かる日本語にする', async () => {
+    const { sandbox, ctx } = setup([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, { errors: [{ message: 'You are not a member of this community.' }] }),
+      },
+    ]);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'jc5',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: { content: { text: 'x', targetType: 'community', communityId: '1700000000000000000' } },
+        },
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'x_error',
+      message: expect.stringContaining('コミュニティへの投稿権限がありません'),
+    });
+  });
+
+  it('通常投稿には community_id を付けない', async () => {
+    const { sandbox, ctx, fetchStub } = setup([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            data: { create_tweet: { tweet_results: { result: { __typename: 'Tweet', rest_id: '111' } } } },
+          }),
+      },
+    ]);
+    await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'jc6',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: { content: { text: 'ふつうの投稿' } },
+      },
+      ctx,
+    );
+    const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(JSON.parse(call.opts.body).variables.community_id).toBeUndefined();
   });
 
   it('GraphQL の errors は x_error、429 は rate_limited、書き込みの403は取引IDの注意付きで返す', async () => {
@@ -746,6 +874,48 @@ describe('メディア付き投稿（upload.x.com）', () => {
     expect(JSON.parse(tweetCall.opts.body).variables.media.media_entities).toEqual([
       { media_id: 'm1', tagged_users: [] },
     ]);
+  });
+
+  it('メディア付きコミュニティ投稿：CreateTweet に media_id と community_id の両方を付ける', async () => {
+    const { sandbox, ctx, fetchStub } = setupMedia([
+      {
+        match: uploadCmd('INIT'),
+        handle: () => jsonResponse(200, { media_id_string: 'm9' }),
+      },
+      { match: uploadAppend, handle: () => textResponse(204, '') },
+      {
+        match: uploadCmd('FINALIZE'),
+        handle: () => jsonResponse(200, {}),
+      },
+      createTweetRoute('119'),
+    ]);
+    const pendingMedia = storeMedia(sandbox, [
+      { uploadId: 'u9', bytes: new Uint8Array([104, 101, 108, 108, 111]) },
+    ]);
+    ctx.pendingMedia = pendingMedia;
+    const data = await sandbox.XManagerDispatch.handleJob(
+      {
+        id: 'jm9',
+        method: 'executePost',
+        accountId: 'a',
+        accountHandle: 'alice',
+        payload: {
+          content: {
+            text: 'コミュニティに写真付き',
+            targetType: 'community',
+            communityId: '1700000000000000000',
+            mediaCount: 1,
+            media: [{ uploadId: 'u9', name: 'a.png', mime: 'image/png', kind: 'image', size: 5 }],
+          },
+        },
+      },
+      ctx,
+    );
+    expect(data.postId).toBe('119');
+    const tweetCall = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    const variables = JSON.parse(tweetCall.opts.body).variables;
+    expect(variables.media.media_entities).toEqual([{ media_id: 'm9', tagged_users: [] }]);
+    expect(variables.community_id).toBe('1700000000000000000');
   });
 
   it('動画付き投稿：APPEND を分割し、FINALIZE 後に STATUS を確認してから投稿する', async () => {

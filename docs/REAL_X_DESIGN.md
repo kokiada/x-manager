@@ -61,7 +61,8 @@ x-manager は同じ役割を **Chrome拡張** に担わせる。コンソール�
 - 投稿：`POST https://x.com/i/api/graphql/<queryId>/CreateTweet`。
   ツリーは1件ずつ返信として連ねる。メディア付き投稿は対応済み
   （upload.x.com へ上げて `media_id` を付ける。下の「メディア付き投稿」
-  参照）。コミュニティ投稿は未対応（`not_implemented` を返す）。
+  参照）。コミュニティ投稿は対応済み（CreateTweet の変数に
+  `community_id` を付ける。下の「コミュニティ投稿」参照）。
 - 削除：`DeleteTweet`。いいね：`FavoriteTweet`。リポスト：`CreateRetweet`。
   ブックマーク：`CreateBookmark`。いずれも GraphQL（POST）。
 - フォロー：`GET UserByScreenName` でハンドル→ユーザーIDを解決してから
@@ -200,7 +201,7 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
 
 | メソッド | 実Xでの仕組み | 状態 |
 |---|---|---|
-| `executePost`（通常／リプライ／ツリー／予約） | CreateTweet。ツリーは返信で連ねる。メディア付きは upload.x.com 経由で対応済み。コミュニティは未対応 | 実装済み・未検証（書き込みは取引ID要求のリスクあり） |
+| `executePost`（通常／リプライ／ツリー／予約） | CreateTweet。ツリーは返信で連ねる。メディア付きは upload.x.com 経由で対応済み。コミュニティは `community_id` 付きで対応済み | 実装済み・未検証（書き込みは取引ID要求のリスクあり） |
 | `deletePost` | DeleteTweet | 実装済み・未検証 |
 | `executeAction`（いいね／リポスト／ブックマーク／フォロー） | FavoriteTweet / CreateRetweet / CreateBookmark / friendships/create.json | 実装済み・未検証 |
 | `checkAccount` | UserByScreenName＋badge_count（取れなければ -1＝不明） | 実装済み・未検証 |
@@ -208,8 +209,25 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
 | `fetchPostAnalytics` | UserTweets（最大50件）＋計測値 | 実装済み・未検証 |
 | `fetchNotifications` | notifications/all.json＋DM inbox（形式が違えば not_implemented） | 実装済み・未検証 |
 
-未対応のまま返しているもの：コミュニティ投稿。`not_implemented` で
-返すので、成功したように見えることはない。
+### コミュニティ投稿（実装済み・2026-11-21）
+
+コミュニティへの投稿は、通常の CreateTweet と同じ操作で、変数に
+`community_id`（コミュニティの数字ID）を付けるだけ。`community_id`
+という変数名は、X API v2 の `POST /2/tweets` と同じで、公開クライアント
+（twikit）が CreateTweet に渡すものとも一致する。別の操作や別の
+query ID は要らない。ツリーの続きも同じコミュニティへの投稿として、
+各ポストに `community_id` を付ける。メディア付きコミュニティ投稿も
+同じ CreateTweet（`media_entities`＋`community_id`）で送れる。
+
+- コミュニティIDはアプリ側の投稿画面で入力する（`x.com/i/communities/数字`
+  の数字部分）。画面側のバリデーションで必須とし、予約投稿では使えない
+  （Xの仕様）。拡張側でも再検査する：無ければ日本語エラー、数字以外なら
+  日本語エラーで止め、成功を偽らない。
+- X がコミュニティ絡みのエラーを返したら（メンバーでない・ID違い等）、
+  原因が分かる日本語（「コミュニティへの投稿権限がありません」）に直す。
+- 実アカウントでの疎通は未検証（他の書き込みと同じく試運転で確認する）。
+
+未対応のまま返しているもの：なし（コミュニティ投稿は対応済み）。
 
 ### メディア付き投稿（実装済み・2026-11-21）
 
@@ -252,10 +270,10 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
    順に試す（手順は `extension/README.md`）。ここで初めて、書き込みが通るか
    （取引ID問題）、query ID・応答形式が生きているかが分かる。
 4. **疎通確認後の追従**：取引IDが必要なら生成器か DOM フォールバックを実装。
-   コミュニティ投稿の実装。定期チェック・自動投稿・自動操作
-   との結合確認。取得系の実クエリの精査はガッツ担当分（土台の上に実装）。
-   メディア付き投稿はこのフェーズを待たず 2026-11-21 に実装済み
-   （タスク1）。
+   定期チェック・自動投稿・自動操作との結合確認。取得系の実クエリの精査は
+   ガッツ担当分（土台の上に実装）。メディア付き投稿はこのフェーズを待たず
+   2026-11-21 に実装済み（タスク1）。コミュニティ投稿も同じく 2026-11-21
+   に実装済み（タスク2）。
 
 ## 既知の制限・リスク
 
