@@ -83,6 +83,13 @@ export interface AccountCheckResult {
   dmCount: number;
   followers: number;
   checkedAt: number;
+  /**
+   * Xが 401/403 を返した（セッション切れ）ために status が
+   * logged_out になった場合に true。呼び出し元はこれを見て
+   * 「セッションが切れています」と分かる文言を表示する
+   * （成功扱いの結果に紛れ込ませないため）。
+   */
+  sessionExpired?: boolean;
 }
 
 /** Result of one search-ban check (research §9-1). null = fetch failed (⚠). */

@@ -50,6 +50,14 @@ export interface ExtensionJob {
   payload: Record<string, unknown>;
 }
 
+/** ジョブ失敗の分類。`not_implemented` は「拡張が応答したが、その操作はまだ実装されていない」ことを表す（次の段階で消えていく）。 */
+export type ExtensionResultCode =
+  | 'not_implemented'
+  | 'no_session'
+  | 'rate_limited'
+  | 'x_error'
+  | 'unknown';
+
 /** 拡張 → アプリ：ジョブの結果。 */
 export interface ExtensionJobResult {
   id: string;
@@ -58,11 +66,8 @@ export interface ExtensionJobResult {
   data?: Record<string, unknown>;
   /** 失敗時の理由（日本語で表示できる文言）。 */
   error?: string;
-  /**
-   * 失敗の分類。`not_implemented` は「拡張が応答したが、その操作は
-   * まだ実装されていない」ことを表す（次の段階で消えていく）。
-   */
-  code?: 'not_implemented' | 'no_session' | 'rate_limited' | 'x_error' | 'unknown';
+  /** 失敗の分類。 */
+  code?: ExtensionResultCode;
   /** 拡張側で結果を作った時刻（epoch ms）。 */
   at: number;
 }

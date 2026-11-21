@@ -1,6 +1,11 @@
+import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import type { Account } from '../db/types';
-import { ExtensionExecutor, EXTENSION_NOT_IMPLEMENTED_MESSAGE } from './ExtensionExecutor';
+import {
+  ExtensionExecutor,
+  EXTENSION_ERROR_MESSAGES,
+  EXTENSION_NOT_IMPLEMENTED_MESSAGE,
+} from './ExtensionExecutor';
 import type { ExtensionJob, ExtensionJobResult } from './protocol';
 import { ExtensionNotConnectedError, type ExtensionTransport } from './transport';
 
@@ -58,12 +63,27 @@ describe('ExtensionExecutor', () => {
     expect(transport.sent[0].accountId).toBe('acc-1');
   });
 
-  it('拡張が not_implemented を返すと日本語の説明が入る', async () => {
+  it('拡張が not_implemented を返すと、具体的な理由があればそれを出す', async () => {
     const transport = fakeTransport((job) => ({
       id: job.id,
       ok: false,
       code: 'not_implemented',
-      error: 'not yet',
+      error: 'メディア付き投稿はまだ未対応です。',
+      at: 5,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    const result = await executor.executeAction(fakeAccount(), 'like', {
+      postUrl: 'https://x.com/a/status/1',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('メディア付き投稿はまだ未対応です。');
+  });
+
+  it('not_implemented で理由が無ければ汎用の説明に落ちる', async () => {
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: false,
+      code: 'not_implemented',
       at: 5,
     }));
     const executor = new ExtensionExecutor(transport);
@@ -72,6 +92,38 @@ describe('ExtensionExecutor', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.error).toBe(EXTENSION_NOT_IMPLEMENTED_MESSAGE);
+  });
+
+  it('失敗分類ごとにフォールバック文言が日本語で決まっている', async () => {
+    const cases: Array<{ code: 'no_session' | 'rate_limited' | 'x_error' | 'unknown'; error?: string }> = [
+      { code: 'no_session' },
+      { code: 'rate_limited' },
+      { code: 'x_error' },
+      { code: 'unknown' },
+    ];
+    for (const c of cases) {
+      const transport = fakeTransport((job) => ({
+        id: job.id,
+        ok: false,
+        code: c.code,
+        at: 5,
+      }));
+      const executor = new ExtensionExecutor(transport);
+      const result = await executor.deletePost(fakeAccount(), '123');
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe(EXTENSION_ERROR_MESSAGES[c.code]);
+    }
+    // x_error で拡張が理由を付けていれば、それを優先する。
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: false,
+      code: 'x_error',
+      error: 'Xがエラーを返しました：何か',
+      at: 5,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    const result = await executor.deletePost(fakeAccount(), '123');
+    expect(result.error).toBe('Xがエラーを返しました：何か');
   });
 
   it('拡張が返すエラーをそのまま失敗結果にする', async () => {
@@ -129,6 +181,27 @@ describe('ExtensionExecutor', () => {
     }));
     const failing = new ExtensionExecutor(failTransport);
     await expect(failing.checkAccount(fakeAccount())).rejects.toThrow('X から弾かれました');
+  });
+
+  it('checkAccount はセッション切れ（401/403）の結果を sessionExpired として通す', async () => {
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: true,
+      data: {
+        status: 'logged_out',
+        notifications: -1,
+        dmCount: -1,
+        followers: -1,
+        sessionExpired: true,
+      },
+      at: 11,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    const result = await executor.checkAccount(fakeAccount());
+    expect(result.status).toBe('logged_out');
+    expect(result.sessionExpired).toBe(true);
+    // 取れなかった数は保存済みの値を残す（-1 のまま返さない）。
+    expect(result.followers).toBe(100);
   });
 
   it('searchBan は null（取得失敗）をそのまま通す', async () => {

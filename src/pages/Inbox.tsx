@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import { markAllNotificationsRead, markNotificationRead } from '../db/repository';
 import { refreshNotifications } from '../lib/notificationService';
 import { checkedAtLabel, fullCount } from '../lib/format';
+import { errorMessageOf } from '../lib/errorMessage';
 import { Button, useToast } from '../components/ui';
 
 export function Inbox() {
@@ -41,8 +42,11 @@ export function Inbox() {
           : `@${account.handle} に新しい通知はありませんでした`,
         'ok',
       );
-    } catch {
-      toast.push('通知の更新に失敗しました', 'err');
+    } catch (err) {
+      toast.push(
+        `通知の更新に失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setRefreshingId(null);
     }

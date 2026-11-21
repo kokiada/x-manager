@@ -139,8 +139,16 @@ async function doCheckAccount(client, auth, job) {
   } catch (err) {
     // 401/403 は「チェックの結果＝ログアウト状態」と扱う（弾くのではなく
     // 状態として返す。アプリ側がステータスを更新できる）。
+    // sessionExpired を付ける：アプリ側はこれを見て「セッション切れで
+    // 再登録が必要」と分かる文言を出せる（成功扱いに紛れない）。
     if (err && (err.status === 401 || err.status === 403)) {
-      return { status: 'logged_out', notifications: -1, dmCount: -1, followers: -1 };
+      return {
+        status: 'logged_out',
+        notifications: -1,
+        dmCount: -1,
+        followers: -1,
+        sessionExpired: true,
+      };
     }
     throw err;
   }

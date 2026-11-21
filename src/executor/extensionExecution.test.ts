@@ -635,6 +635,51 @@ describe('チェック系（dispatch + xClient）', () => {
       notifications: -1,
       dmCount: -1,
       followers: -1,
+      // アプリ側はこれを見て「セッション切れで再登録が必要」と分かる
+      // 文言を出せる（成功扱いに紛れない）。
+      sessionExpired: true,
+    });
+  });
+
+  it('checkAccount の 403 もセッション切れとして返す', async () => {
+    const { sandbox, ctx } = setup([
+      { match: GRAPHQL('UserByScreenName'), handle: () => jsonResponse(403, {}) },
+    ]);
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        { id: 'c3b', method: 'checkAccount', accountId: 'a', accountHandle: 'alice', payload: {} },
+        ctx,
+      ),
+    ).resolves.toEqual({
+      status: 'logged_out',
+      notifications: -1,
+      dmCount: -1,
+      followers: -1,
+      sessionExpired: true,
+    });
+  });
+
+  it('checkAccount は query ID が見つからなければ not_implemented の日本語エラーで失敗する', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({
+      sessions,
+      chrome: chromeStub,
+      fetch: fetchStub,
+      resolveQueryId: async () => null,
+    });
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        { id: 'c3c', method: 'checkAccount', accountId: 'a', accountHandle: 'alice', payload: {} },
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'not_implemented',
+      message: expect.stringContaining('query ID'),
     });
   });
 

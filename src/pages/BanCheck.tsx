@@ -9,6 +9,7 @@ import {
   SEARCH_QUERIES_PER_WINDOW,
 } from '../lib/searchBanPacing';
 import { checkedAtLabel } from '../lib/format';
+import { errorMessageOf } from '../lib/errorMessage';
 import { Button, useToast } from '../components/ui';
 
 function verdictMark(value: boolean | null): string {
@@ -76,7 +77,10 @@ export function BanCheck() {
         hidden === 0 ? 'ok' : 'info',
       );
     } catch (err) {
-      toast.push(err instanceof Error ? err.message : 'チェックに失敗しました', 'err');
+      toast.push(
+        `サーチバンチェックに失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setRunning(false);
     }
@@ -98,6 +102,12 @@ export function BanCheck() {
       // labelled as demo data.
       const posts = await executor.fetchPostAnalytics(account, [account]);
       setReplyDemo(posts.slice(0, 10).map((p) => ({ text: p.text, postedAt: p.postedAt })));
+    } catch (err) {
+      // これまで catch が無く、拡張の失敗が未処理のままだった。
+      toast.push(
+        `リプライ一覧の取得に失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setReplyLoading(false);
     }

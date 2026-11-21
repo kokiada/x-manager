@@ -9,6 +9,7 @@ import { executor } from '../executor';
 import { accountsToCsv } from '../lib/accountCsv';
 import { downloadTextFile } from '../lib/csv';
 import { compactCount, checkedAtLabel } from '../lib/format';
+import { errorMessageOf, SESSION_EXPIRED_MESSAGE } from '../lib/errorMessage';
 import { AccountForm } from '../components/AccountForm';
 import { GroupManager } from '../components/GroupManager';
 import { Button, Modal, StatusBadge, useToast } from '../components/ui';
@@ -66,13 +67,30 @@ export function Accounts() {
     setCheckingId(account.id);
     try {
       const result = await executor.checkAccount(account);
-      await recordFollowerHistory(account.id, result.followers);
+      // セッション切れ（401/403）は「ログアウト状態」という結果として
+      // 返る。成功トーストにせず、再登録を促す文言を出す。
+      if (result.sessionExpired) {
+        toast.push(`@${account.handle}：${SESSION_EXPIRED_MESSAGE}`, 'err');
+        return;
+      }
+      // フォロワー数が不明（-1）のときは履歴に残さない。
+      if (result.followers >= 0) await recordFollowerHistory(account.id, result.followers);
       toast.push(
         `@${account.handle} をチェックしました（フォロワー ${result.followers.toLocaleString('ja-JP')}）`,
         'ok',
       );
-    } catch {
-      toast.push(`@${account.handle} のチェックに失敗しました`, 'err');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      // 取り込み時に付けた仮ハンドル（linked-…）はX上に存在しないため、
+      // チェックは必ず「見つかりません」になる。原因をそのまま伝える。
+      if (account.handle.startsWith('linked-')) {
+        toast.push(
+          `@${account.handle} は仮ハンドルのためチェックできません。アカウント編集で本当の @ハンドルに直してからもう一度チェックしてください`,
+          'err',
+        );
+      } else {
+        toast.push(`@${account.handle} のチェックに失敗しました：${detail}`, 'err');
+      }
     } finally {
       setCheckingId(null);
     }
@@ -81,18 +99,33 @@ export function Accounts() {
   const runBulkCheck = async () => {
     const targets = filtered;
     let done = 0;
+    let failed = 0;
+    let firstError: string | null = null;
     for (const account of targets) {
       setBulkProgress(`チェック中 ${done + 1}/${targets.length}: @${account.handle}`);
       try {
         const result = await executor.checkAccount(account);
-        await recordFollowerHistory(account.id, result.followers);
-      } catch {
-        /* continue with the next account, as XBoard does */
+        if (result.sessionExpired) {
+          failed++;
+          firstError ??= `@${account.handle}：${SESSION_EXPIRED_MESSAGE}`;
+        } else if (result.followers >= 0) {
+          await recordFollowerHistory(account.id, result.followers);
+        }
+      } catch (err) {
+        // 1件の失敗で全体を止めない（XBoard と同じ）が、件数と
+        // 最初の理由は残して最後にまとめて知らせる。
+        failed++;
+        firstError ??= `@${account.handle}：${errorMessageOf(err, '原因不明のエラー')}`;
       }
       done++;
     }
     setBulkProgress(null);
-    toast.push(`${done}件のアカウントチェックが完了しました`, 'ok');
+    toast.push(
+      failed === 0
+        ? `${done}件のアカウントチェックが完了しました`
+        : `${done}件のアカウントチェックが完了しました（${failed}件失敗：${firstError ?? '原因不明のエラー'}）`,
+      failed === 0 ? 'ok' : 'err',
+    );
   };
 
   /**

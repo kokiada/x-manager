@@ -19,6 +19,7 @@ import {
   type AnalyticsSortKey,
 } from '../lib/analytics';
 import { checkedAtLabel, fullCount } from '../lib/format';
+import { errorMessageOf } from '../lib/errorMessage';
 import { Button, useToast } from '../components/ui';
 
 const SORT_LABELS: Record<AnalyticsSortKey, string> = {
@@ -123,8 +124,11 @@ function PostAnalyticsTab({
       const items = await executor.fetchPostAnalytics(account, fetchers);
       await savePostAnalytics(account.id, items.map((i) => ({ ...i, handle: account.handle, fetcherAccountId: fetchers[0]?.id ?? account.id })));
       toast.push(`@${account.handle} のポスト分析を取得しました（${items.length}件）`, 'ok');
-    } catch {
-      toast.push('ポスト分析の取得に失敗しました', 'err');
+    } catch (err) {
+      toast.push(
+        `ポスト分析の取得に失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setFetching(false);
     }
@@ -321,8 +325,11 @@ function PostTrackingTab({
         }
       }
       toast.push(`ポスト追跡を開始しました（${created}件）`, 'ok');
-    } catch {
-      toast.push('ポスト追跡の開始に失敗しました', 'err');
+    } catch (err) {
+      toast.push(
+        `ポスト追跡の開始に失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setStarting(false);
     }

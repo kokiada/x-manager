@@ -8,6 +8,7 @@ import { deleteAccount, recordFollowerHistory, updateAccount } from '../db/repos
 import { runSingleBanCheck } from '../lib/banCheckService';
 import { executor } from '../executor';
 import { checkedAtLabel, fullCount, maskToken } from '../lib/format';
+import { errorMessageOf, SESSION_EXPIRED_MESSAGE } from '../lib/errorMessage';
 import { AccountForm } from '../components/AccountForm';
 import { Button, Modal, StatusBadge, useToast } from '../components/ui';
 import { useLinkedAccounts } from '../hooks/useLinkedAccounts';
@@ -63,10 +64,20 @@ export function AccountDetail() {
     setBusy('check');
     try {
       const result = await executor.checkAccount(account);
-      await recordFollowerHistory(account.id, result.followers);
+      // セッション切れ（401/403）は「ログアウト状態」という結果として
+      // 返る。成功トーストにせず、再登録を促す文言を出す。
+      if (result.sessionExpired) {
+        toast.push(SESSION_EXPIRED_MESSAGE, 'err');
+        return;
+      }
+      // フォロワー数が不明（-1）のときは履歴に残さない。
+      if (result.followers >= 0) await recordFollowerHistory(account.id, result.followers);
       toast.push(`@${account.handle} のチェックが完了しました`, 'ok');
-    } catch {
-      toast.push('チェックに失敗しました', 'err');
+    } catch (err) {
+      toast.push(
+        `チェックに失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setBusy(null);
     }
@@ -87,6 +98,12 @@ export function AccountDetail() {
           result.topicVisible && result.latestVisible ? 'ok' : 'info',
         );
       }
+    } catch (err) {
+      // これまで catch が無く、拡張の失敗が未処理のままだった。
+      toast.push(
+        `サーチバンチェックに失敗しました：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
     } finally {
       setBusy(null);
     }

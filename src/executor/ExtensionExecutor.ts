@@ -1,4 +1,5 @@
 import type { Account } from '../db/types';
+import { updateAccount } from '../db/repository';
 import type {
   AccountCheckResult,
   ActionResult,
@@ -13,11 +14,30 @@ import type {
   SearchBanCheckResult,
 } from './Executor';
 import { WindowPostMessageTransport, type ExtensionTransport } from './transport';
-import type { ExtensionJob, ExtensionJobResult, ExtensionMethod } from './protocol';
+import type {
+  ExtensionJob,
+  ExtensionJobResult,
+  ExtensionMethod,
+  ExtensionResultCode,
+} from './protocol';
 
 /** 拡張が「未実装」と返したときの表示文言。 */
 export const EXTENSION_NOT_IMPLEMENTED_MESSAGE =
   'この操作はまだ拡張機能で実装されていません。次の段階で対応します。';
+
+/**
+ * 失敗分類ごとのフォールバック文言（拡張が理由文を付けなかった場合）。
+ * 拡張は通常、具体的な理由を日本語で付けて返すので、そちらを優先する。
+ */
+export const EXTENSION_ERROR_MESSAGES: Record<ExtensionResultCode, string> = {
+  not_implemented: EXTENSION_NOT_IMPLEMENTED_MESSAGE,
+  no_session:
+    'このアカウントは拡張に連携されていません。拡張のポップアップで auth_token を登録してください。',
+  rate_limited:
+    'Xの制限（レートリミット）にかかりました。しばらく待ってから再試行してください。',
+  x_error: '拡張での実行に失敗しました',
+  unknown: '拡張での実行に失敗しました',
+};
 
 function newJobId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -54,9 +74,16 @@ export class ExtensionExecutor implements Executor {
     return this.transport.sendJob(job);
   }
 
+  /**
+   * 拡張の失敗を画面に出す文言に写す。拡張は通常、具体的な理由を
+   * 日本語で付けて返すのでそれを優先し、理由が無い場合だけ分類ごと
+   * のフォールバック文言を使う（「失敗しました」だけの表示にしない）。
+   */
   private errorOf(result: ExtensionJobResult): string {
-    if (result.code === 'not_implemented') return EXTENSION_NOT_IMPLEMENTED_MESSAGE;
-    return result.error ?? '拡張での実行に失敗しました';
+    const detail =
+      typeof result.error === 'string' && result.error.trim() ? result.error : undefined;
+    if (detail) return detail;
+    return result.code ? EXTENSION_ERROR_MESSAGES[result.code] : EXTENSION_ERROR_MESSAGES.unknown;
   }
 
   async executePost(account: Account, content: PostContent): Promise<PostResult> {
@@ -119,14 +146,27 @@ export class ExtensionExecutor implements Executor {
     // 保存済みの値を残し、0 で上書きしてしまわないようにする。
     const numOr = (v: unknown, fallback: number): number =>
       typeof v === 'number' && v >= 0 ? v : fallback;
-    return {
+    const check: AccountCheckResult = {
       accountId: account.id,
       status: status as AccountCheckResult['status'],
       notifications: numOr(data.notifications, account.notifications),
       dmCount: numOr(data.dmCount, account.dmCount),
       followers: numOr(data.followers, account.followers),
       checkedAt: result.at ?? at,
+      // 401/403 でセッション切れと判定された場合。呼び出し元は
+      // これを見て再登録を促す文言を出せる（成功扱いに紛れない）。
+      sessionExpired: data.sessionExpired === true ? true : undefined,
     };
+    // シミュレータと同じく、判定結果を台帳に書き戻す。セッション切れ
+    // のときは status が logged_out になるので、一覧の表示も変わる。
+    await updateAccount(account.id, {
+      status: check.status,
+      notifications: check.notifications,
+      dmCount: check.dmCount,
+      followers: check.followers,
+      lastCheckedAt: check.checkedAt,
+    });
+    return check;
   }
 
   async checkSearchBan(account: Account, viaAccount: Account): Promise<SearchBanCheckResult> {
