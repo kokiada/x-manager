@@ -16,6 +16,8 @@ const XManagerProtocol = {
   EXTENSION_VERSION: '0.1.0',
   PAGE_SOURCE: 'x-manager',
   EXTENSION_SOURCE: 'x-manager-extension',
+  /** ポップアップ → background の送信元識別子（取り込み要求など）。 */
+  POPUP_SOURCE: 'x-manager-popup',
   JOB_TIMEOUT_MS: 30000,
   /** メディア付きジョブのタイムアウト（アップロード分を見込む）。 */
   MEDIA_JOB_TIMEOUT_MS: 120000,

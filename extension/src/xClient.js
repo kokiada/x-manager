@@ -507,6 +507,50 @@ const XManagerXClient = {
       };
     }
 
+    /**
+     * ログイン中のアカウント本人を確認する。
+     * REST 1.1 の `account/verify_credentials.json`（Web 版のセッション
+     * でも使える、認証済みユーザー本人の情報だけを返す軽い呼び出し）
+     * で、数値のユーザーIDとハンドルを取る。ポップアップの
+     * 「今ログイン中のアカウントを取り込む」で使う。
+     * 401/403 は「セッション切れ」ではなく「この確認方法が
+     * 受け付けられなかった」可能性もあるため、手入力への誘導を
+     * 含む文言にして返す。
+     */
+    async function getCurrentUser(auth) {
+      let json;
+      try {
+        json = await requestJson(
+          `${XManagerXClient.REST_BASE}/account/verify_credentials.json?include_email=false&skip_status=true`,
+          { method: 'GET', headers: headers(auth), credentials: 'include' },
+          auth,
+          { isWrite: false },
+        );
+      } catch (err) {
+        if (err && (err.status === 401 || err.status === 403)) {
+          throw errors.makeError(
+            'x_error',
+            'ログイン中のアカウントを確認できませんでした。x.com にログインし直すか、手入力で登録してください。',
+          );
+        }
+        throw err;
+      }
+      const id =
+        json && typeof json.id_str === 'string'
+          ? json.id_str
+          : json && typeof json.id === 'number'
+            ? String(json.id)
+            : '';
+      const handle = json && typeof json.screen_name === 'string' ? json.screen_name : '';
+      if (!id || !handle) {
+        throw errors.makeError(
+          'x_error',
+          'ログイン中のアカウントを確認できませんでした。x.com にログインし直すか、手入力で登録してください。',
+        );
+      }
+      return { id, handle };
+    }
+
     async function getUserTweets(auth, userId, count) {
       const data = await graphql(
         auth,
@@ -625,6 +669,7 @@ const XManagerXClient = {
       retweet,
       bookmarkTweet,
       followUser,
+      getCurrentUser,
       getUserByScreenName,
       getUserTweets,
       searchTimeline,

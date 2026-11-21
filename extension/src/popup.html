@@ -25,7 +25,13 @@
   <h2 style="font-size:13px;margin:12px 0 4px">連携中のアカウント</h2>
   <ul id="sessions"><li>読み込み中…</li></ul>
 
-  <h2 style="font-size:13px;margin:12px 0 4px">アカウントを追加する</h2>
+  <h2 style="font-size:13px;margin:12px 0 4px">ログイン中のアカウントを取り込む</h2>
+  <p class="note">X にログインしたこの Chrome から、auth_token をコピーせずに連携できます。トークンの値は画面に出ません。</p>
+  <div class="row">
+    <button id="import-current" class="primary" type="button">今ログイン中のアカウントを取り込む</button>
+  </div>
+
+  <h2 style="font-size:13px;margin:12px 0 4px">手入力でアカウントを追加する</h2>
   <div class="row">
     <input id="account-id" placeholder="x-manager のアカウントID" autocomplete="off">
   </div>
@@ -39,7 +45,8 @@
     <button id="add" class="primary" type="button">連携する</button>
   </div>
   <p id="status" role="status"></p>
-  <p class="note">アカウントIDはアプリのアカウント画面でコピーできます（詳細画面の「アカウントID（拡張の連携用）」）。auth_token は X にログインしたブラウザの Cookie から取得します。</p>
+  <p class="note">取り込みは、X にログイン中のアカウントが対象です。複数アカウントを使う場合は、X でアカウントを切り替えてから同じ操作を繰り返してください。</p>
+  <p class="note">手入力で登録する場合は、auth_token は X にログインしたブラウザの Cookie から取得します（開発者ツール → アプリケーション → Cookie → https://x.com）。</p>
   <p class="note">連携しただけではアプリの一覧には増えません。アプリのアカウント画面で「拡張の連携を取り込む」を押してください。</p>
 
   <script src="protocol.js"></script>

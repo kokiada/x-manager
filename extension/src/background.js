@@ -8,7 +8,7 @@
  */
 'use strict';
 
-/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerQueryIds, XManagerDispatch, XManagerErrors, XManagerMediaStore */
+/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerSessionImport, XManagerQueryIds, XManagerDispatch, XManagerErrors, XManagerMediaStore */
 
 importScripts(
   'protocol.js',
@@ -17,6 +17,7 @@ importScripts(
   'queryIds.js',
   'session.js',
   'xClient.js',
+  'sessionImport.js',
   'transactionId.js',
   'mediaStore.js',
   'dispatch.js',
@@ -82,6 +83,37 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           kind: 'sessions',
           sessions: [],
           accountIds: [],
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    return true; // 非同期で sendResponse する
+  }
+
+  // ログイン中のアカウントの取り込み（ポップアップから）。
+  // 拡張が自分の Cookie 権限で auth_token を読み、本人確認をして
+  // から保管庫へ入れる。トークンの値は応答に含めない。
+  if (
+    message.kind === 'import-current-account' &&
+    message.source === XManagerProtocol.POPUP_SOURCE
+  ) {
+    XManagerSessionImport.importCurrentAccount({
+      chrome,
+      fetchImpl: fetch,
+      sessions: XManagerSessions,
+      resolveQueryId: (op) =>
+        XManagerQueryIds.getQueryId(op, {
+          fetchImpl: fetch,
+          storage: chrome.storage.local,
+        }),
+      getTransactionId: (method, url) => transactionIdGenerator(method, url),
+    })
+      .then((result) => {
+        sendResponse({ ok: true, accountId: result.accountId, handle: result.handle });
+      })
+      .catch((err) => {
+        sendResponse({
+          ok: false,
+          code: XManagerErrors.codeOf(err),
           error: err instanceof Error ? err.message : String(err),
         });
       });

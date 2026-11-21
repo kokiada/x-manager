@@ -22,6 +22,8 @@ export const EXTENSION_VERSION = '0.1.0';
 export const PAGE_SOURCE = 'x-manager';
 /** window.postMessage の送信元識別子（拡張側）。 */
 export const EXTENSION_SOURCE = 'x-manager-extension';
+/** ポップアップ → background の送信元識別子（取り込み要求など）。 */
+export const POPUP_SOURCE = 'x-manager-popup';
 
 /** ジョブ1件の既定タイムアウト（実X操作は数秒〜十数秒かかる）。 */
 export const JOB_TIMEOUT_MS = 30_000;
@@ -157,6 +159,31 @@ export interface ExtensionSession {
 export interface ListSessionsMessage {
   source: typeof PAGE_SOURCE;
   kind: 'list-sessions';
+}
+
+/**
+ * ポップアップ → background：今ログイン中の X アカウントを取り込む。
+ * 拡張が自分の Cookie 権限で auth_token を読み、本人確認をしてから
+ * セッション保管庫へ入れる。トークンの値はこのメッセージにも
+ * 応答にも出ない（応答はアカウントIDとハンドルだけ）。
+ */
+export interface ImportCurrentAccountMessage {
+  source: typeof POPUP_SOURCE;
+  kind: 'import-current-account';
+}
+
+/** background → ポップアップ：取り込みの結果。 */
+export interface ImportCurrentAccountResult {
+  /** 成功したかどうか。 */
+  ok: boolean;
+  /** 成功時：取り込んだアカウントのID（Xの数値ユーザーID）。 */
+  accountId?: string;
+  /** 成功時：取り込んだアカウントのハンドル（@なし）。 */
+  handle?: string;
+  /** 失敗時の理由（日本語で表示できる文言）。 */
+  error?: string;
+  /** 失敗の分類。 */
+  code?: ExtensionResultCode;
 }
 
 /** 拡張 → アプリ：連携済みアカウントの一覧。 */

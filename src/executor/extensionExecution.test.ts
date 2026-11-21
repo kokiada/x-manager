@@ -30,7 +30,7 @@ function loadExtension(chromeStub: AnyRecord, fetchStub: AnyRecord) {
   sandbox.chrome = chromeStub;
   sandbox.fetch = fetchStub;
   const ctx = createContext(sandbox);
-  for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'mediaStore.js', 'dispatch.js']) {
+  for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'mediaStore.js', 'sessionImport.js', 'dispatch.js']) {
     runInContext(
       readFileSync(new URL(`../../extension/src/${file}`, import.meta.url), 'utf8'),
       ctx,
@@ -1936,7 +1936,7 @@ describe('background の配線', () => {
       new URL('../../extension/src/background.js', import.meta.url),
       'utf8',
     );
-    for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'transactionId.js', 'dispatch.js']) {
+    for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'transactionId.js', 'mediaStore.js', 'sessionImport.js', 'dispatch.js']) {
       expect(background).toContain(`'${file}'`);
     }
     const manifest = JSON.parse(
@@ -1945,5 +1945,229 @@ describe('background の配線', () => {
     expect(manifest.host_permissions).toContain('https://x.com/*');
     expect(manifest.host_permissions).toContain('https://api.x.com/*');
     expect(manifest.host_permissions).toContain('https://abs.twimg.com/*');
+  });
+});
+
+describe('ログイン中のアカウントの取り込み（sessionImport + background）', () => {
+  type BgListener = (
+    message: unknown,
+    sender: unknown,
+    sendResponse: (r: unknown) => void,
+  ) => boolean;
+
+  /** background.js を vm で読み込み、onMessage リスナーを返す。 */
+  function loadBackgroundForImport(chromeStub: AnyRecord, fetchStub: AnyRecord) {
+    let listener: BgListener | null = null;
+    chromeStub.runtime = {
+      onMessage: {
+        addListener: (fn: BgListener) => {
+          listener = fn;
+        },
+      },
+    };
+    const sandbox: AnyRecord = {
+      console,
+      chrome: chromeStub,
+      fetch: fetchStub,
+      setTimeout,
+      clearTimeout,
+    };
+    sandbox.self = sandbox;
+    const ctx = createContext(sandbox);
+    sandbox.importScripts = (...files: string[]) => {
+      for (const file of files) {
+        runInContext(
+          readFileSync(new URL(`../../extension/src/${file}`, import.meta.url), 'utf8'),
+          ctx,
+          { filename: file },
+        );
+      }
+    };
+    runInContext(
+      readFileSync(new URL('../../extension/src/background.js', import.meta.url), 'utf8'),
+      ctx,
+      { filename: 'background.js' },
+    );
+    return { getListener: () => listener };
+  }
+
+  function sendImport(listener: BgListener): Promise<AnyRecord> {
+    return new Promise<AnyRecord>((resolve) => {
+      listener(
+        { source: 'x-manager-popup', kind: 'import-current-account' },
+        {},
+        (r: unknown) => resolve(r as AnyRecord),
+      );
+    });
+  }
+
+  /** verify_credentials の成功応答を返すルート。 */
+  function verifyCredentialsRoute(user: AnyRecord) {
+    return {
+      match: (url: string) => url.includes('account/verify_credentials.json'),
+      handle: () => jsonResponse(200, user),
+    };
+  }
+
+  function storedSessions(chromeStub: AnyRecord): AnyRecord | undefined {
+    return chromeStub.storage.local._data['xmanager.sessions.v1'];
+  }
+
+  it('Cookie から読んだトークンで本人確認し、IDとハンドルだけを返す', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    chromeStub.cookies._cookies['auth_token'] = 'a'.repeat(40);
+    chromeStub.cookies._cookies['ct0'] = 'ct0value';
+    const fetchStub = makeFetchStub([
+      verifyCredentialsRoute({ id_str: '12345', screen_name: 'testuser' }),
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toEqual({ ok: true, accountId: '12345', handle: 'testuser' });
+    // トークンの値は応答にも保管庫の返り値にも出ない
+    expect(JSON.stringify(result)).not.toContain('a'.repeat(40));
+    const stored = storedSessions(chromeStub);
+    expect(stored).toBeDefined();
+    expect(stored!['12345']).toMatchObject({ authToken: 'a'.repeat(40), handle: 'testuser' });
+  });
+
+  it('auth_token の Cookie が無ければ「Xにログインしていません」を返す', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    const fetchStub = makeFetchStub([
+      verifyCredentialsRoute({ id_str: '12345', screen_name: 'testuser' }),
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'x_error',
+      error: expect.stringContaining('Xにログインしていません'),
+    });
+    expect(storedSessions(chromeStub)).toBeUndefined();
+    expect(fetchStub.calls).toHaveLength(0);
+  });
+
+  it('本人確認が 403 なら手入力への誘導を返し、セッションは保存しない', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    chromeStub.cookies._cookies['auth_token'] = 'a'.repeat(40);
+    chromeStub.cookies._cookies['ct0'] = 'ct0value';
+    const fetchStub = makeFetchStub([
+      {
+        match: (url: string) => url.includes('account/verify_credentials.json'),
+        handle: () => jsonResponse(403, { errors: [{ message: 'Forbidden' }] }),
+      },
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'x_error',
+      error: expect.stringContaining('ログイン中のアカウントを確認できませんでした'),
+    });
+    expect(storedSessions(chromeStub)).toBeUndefined();
+  });
+
+  it('本人確認の応答にID・ハンドルが無ければエラーにし、セッションは保存しない', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    chromeStub.cookies._cookies['auth_token'] = 'a'.repeat(40);
+    chromeStub.cookies._cookies['ct0'] = 'ct0value';
+    const fetchStub = makeFetchStub([verifyCredentialsRoute({})]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'x_error',
+      error: expect.stringContaining('ログイン中のアカウントを確認できませんでした'),
+    });
+    expect(storedSessions(chromeStub)).toBeUndefined();
+  });
+
+  it('Cookie API が無ければ extension_broken を返す（生の TypeError にならない）', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    delete chromeStub.cookies;
+    const fetchStub = makeFetchStub([
+      verifyCredentialsRoute({ id_str: '12345', screen_name: 'testuser' }),
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'extension_broken',
+      error: expect.stringContaining('Cookie機能が使えません'),
+    });
+    expect(storedSessions(chromeStub)).toBeUndefined();
+  });
+
+  it('ct0 が最初無くても、x.com を開いて付いた ct0 で取り込める', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    chromeStub.cookies._cookies['auth_token'] = 'b'.repeat(40);
+    const fetchStub = makeFetchStub([
+      {
+        match: (url: string) => url === 'https://x.com/',
+        handle: () => {
+          // X が ct0 を付ける様子を再現する
+          chromeStub.cookies._cookies['ct0'] = 'ct0-after-home';
+          return textResponse(200, '<html></html>');
+        },
+      },
+      verifyCredentialsRoute({ id_str: '999', screen_name: 'ct0user' }),
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toEqual({ ok: true, accountId: '999', handle: 'ct0user' });
+    expect(fetchStub.calls.some((c: AnyRecord) => c.url === 'https://x.com/')).toBe(true);
+    expect(storedSessions(chromeStub)!['999']).toMatchObject({
+      authToken: 'b'.repeat(40),
+      handle: 'ct0user',
+    });
+  });
+
+  it('ct0 がどうしても取れなければエラーにし、セッションは保存しない', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    chromeStub.cookies._cookies['auth_token'] = 'c'.repeat(40);
+    const fetchStub = makeFetchStub([
+      {
+        match: (url: string) => url === 'https://x.com/',
+        handle: () => textResponse(200, '<html></html>'),
+      },
+      verifyCredentialsRoute({ id_str: '999', screen_name: 'ct0user' }),
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await sendImport(getListener()!);
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'x_error',
+      error: expect.stringContaining('ct0'),
+    });
+    expect(storedSessions(chromeStub)).toBeUndefined();
+  });
+
+  it('getCurrentUser は verify_credentials の id_str と screen_name を返す', async () => {
+    const sandbox = loadExtension(makeChromeStub(), makeFetchStub([
+      verifyCredentialsRoute({ id_str: '777', screen_name: 'directuser' }),
+    ]));
+    const client = sandbox.XManagerXClient.createClient({
+      fetchImpl: sandbox.fetch,
+      resolveQueryId: async () => null,
+    });
+    await expect(client.getCurrentUser({ ct0: 'ct0value' })).resolves.toEqual({
+      id: '777',
+      handle: 'directuser',
+    });
+  });
+
+  it('getCurrentUser は 401 なら手入力への誘導の文言にする', async () => {
+    const sandbox = loadExtension(makeChromeStub(), makeFetchStub([
+      {
+        match: (url: string) => url.includes('account/verify_credentials.json'),
+        handle: () => jsonResponse(401, { errors: [{ message: 'Unauthorized' }] }),
+      },
+    ]));
+    const client = sandbox.XManagerXClient.createClient({
+      fetchImpl: sandbox.fetch,
+      resolveQueryId: async () => null,
+    });
+    await expect(client.getCurrentUser({ ct0: 'ct0value' })).rejects.toThrow(
+      'ログイン中のアカウントを確認できませんでした',
+    );
   });
 });

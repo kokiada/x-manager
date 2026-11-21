@@ -1,11 +1,12 @@
 /**
  * x-manager 実行役 — ポップアップ（連携アカウントの管理）。
- * auth_token の入力・保存・削除だけを行う。トークンはこの画面から
+ * ログイン中のアカウントの取り込み（Cookie を拡張が直接読む）と、
+ * auth_token の手入力・保存・削除を行う。トークンはこの画面から
  * 外に出ることはない。
  */
 'use strict';
 
-/* global document, XManagerSessions */
+/* global chrome, document, XManagerProtocol, XManagerSessions */
 
 const listEl = document.getElementById('sessions');
 const statusEl = document.getElementById('status');
@@ -46,6 +47,25 @@ async function refresh() {
     listEl.appendChild(li);
   }
 }
+
+document.getElementById('import-current').addEventListener('click', async () => {
+  setStatus('取り込み中…');
+  try {
+    const res = await chrome.runtime.sendMessage({
+      kind: 'import-current-account',
+      source: XManagerProtocol.POPUP_SOURCE,
+    });
+    if (res && res.ok) {
+      // 返ってくるのはアカウントIDとハンドルだけ（トークンの値は出ない）。
+      setStatus(`@${res.handle} を取り込みました。`, true);
+      await refresh();
+    } else {
+      setStatus(res && res.error ? res.error : '取り込みに失敗しました。');
+    }
+  } catch (err) {
+    setStatus(err instanceof Error ? err.message : String(err));
+  }
+});
 
 document.getElementById('add').addEventListener('click', async () => {
   const accountId = accountIdEl.value.trim();

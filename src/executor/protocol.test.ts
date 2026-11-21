@@ -4,6 +4,7 @@ import {
   EXTENSION_SOURCE,
   MEDIA_CHUNK_SIZE,
   PAGE_SOURCE,
+  POPUP_SOURCE,
   PROTOCOL_VERSION,
   helloAckDiagnostics,
   isExtensionMessage,
@@ -270,6 +271,7 @@ describe('extension/src/protocol.js との同期', () => {
     expect(mirror).toContain(`VERSION: ${PROTOCOL_VERSION}`);
     expect(mirror).toContain(`PAGE_SOURCE: '${PAGE_SOURCE}'`);
     expect(mirror).toContain(`EXTENSION_SOURCE: '${EXTENSION_SOURCE}'`);
+    expect(mirror).toContain(`POPUP_SOURCE: '${POPUP_SOURCE}'`);
     expect(mirror).toContain(`MEDIA_CHUNK_SIZE: ${MEDIA_CHUNK_SIZE}`);
     // 連携一覧の正規化ヘルパーもミラー側にあること
     expect(mirror).toContain('normalizeSessions');
