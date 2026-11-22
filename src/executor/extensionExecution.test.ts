@@ -1595,6 +1595,176 @@ describe('取得系（dispatch + xClient）', () => {
       ),
     ).rejects.toMatchObject({ code: 'not_implemented' });
   });
+
+  it('fetchNotifications は通知の時刻を応答から取り、DMの時刻が変でも壊れない', async () => {
+    const { sandbox, ctx } = setup([
+      {
+        match: (url) => url.includes('notifications/all.json'),
+        handle: () =>
+          jsonResponse(200, {
+            timeline: {
+              instructions: [
+                {
+                  type: 'TimelineAddEntries',
+                  entries: [
+                    {
+                      entryId: 'n-1',
+                      sortIndex: '1795220000000',
+                      content: {
+                        entryType: 'TimelineTimelineItem',
+                        itemContent: {
+                          notification: {
+                            message: { text: '@bob がいいねしました' },
+                            fromUser: { screen_name: 'bob' },
+                            timestamp: '1795220000000',
+                          },
+                        },
+                      },
+                    },
+                    {
+                      entryId: 'n-2',
+                      content: {
+                        entryType: 'TimelineTimelineItem',
+                        itemContent: {
+                          notification: {
+                            message: { text: '新しいフォロワー' },
+                            fromUser: { screen_name: 'carol' },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+      },
+      {
+        match: (url) => url.includes('dm/inbox_timeline'),
+        handle: () =>
+          jsonResponse(200, {
+            inbox_timeline: {
+              entries: [
+                {
+                  message: {
+                    id: 'm1',
+                    time: 'not-a-number',
+                    message_data: { text: 'やあ', sender_id: '555' },
+                  },
+                },
+                {
+                  message: {
+                    id: 'm2',
+                    message_data: { text: 'こんにちは', sender_id: '555' },
+                  },
+                },
+              ],
+            },
+            users: { '555': { screen_name: 'carol' } },
+          }),
+      },
+    ]);
+    const data = await sandbox.XManagerDispatch.handleJob(
+      { id: 'f4', method: 'fetchNotifications', accountId: 'a', accountHandle: 'alice', payload: {} },
+      ctx,
+    );
+    expect(data.items).toHaveLength(4);
+    // DM: 時刻が読めなくても NaN にならず、取得時刻で入る。
+    expect(Number.isFinite(data.items[0].at)).toBe(true);
+    expect(Number.isFinite(data.items[1].at)).toBe(true);
+    // 通知: 応答のタイムスタンプをそのまま使う（再取得でも同じ値＝重複排除が効く）。
+    expect(data.items[2]).toMatchObject({ kind: 'notification', at: 1795220000000 });
+    // 時刻が無い通知は取得時刻で入る。
+    expect(Number.isFinite(data.items[3].at)).toBe(true);
+  });
+
+  it('fetchPostAnalytics は実データの欠け・墓碑・可視性ラッパーを扱う', async () => {
+    const { sandbox, ctx } = setup([
+      {
+        match: GRAPHQL('UserByScreenName'),
+        handle: () => jsonResponse(200, userByScreenNameBody('999', 'alice')),
+      },
+      {
+        match: GRAPHQL('UserTweets'),
+        handle: () =>
+          jsonResponse(
+            200,
+            userTweetsBody([
+              // views・bookmark_count が無い実データ形（0 として扱う）。
+              {
+                entryId: 'tweet-2001',
+                content: {
+                  entryType: 'TimelineTimelineItem',
+                  itemContent: {
+                    tweet_results: {
+                      result: {
+                        __typename: 'Tweet',
+                        rest_id: '2001',
+                        legacy: {
+                          id_str: '2001',
+                          full_text: 'no views',
+                          favorite_count: 5,
+                          retweet_count: 2,
+                          created_at: 'Sat Nov 21 00:00:00 +0000 2026',
+                        },
+                        core: { user_results: { result: { legacy: { screen_name: 'alice' } } } },
+                      },
+                    },
+                  },
+                },
+              },
+              // 墓碑は弾く。
+              {
+                entryId: 'tweet-2002',
+                content: {
+                  entryType: 'TimelineTimelineItem',
+                  itemContent: {
+                    tweet_results: {
+                      result: { __typename: 'TweetTombstone', rest_id: '2002' },
+                    },
+                  },
+                },
+              },
+              // 可視性ラッパーは中身をほどく。
+              {
+                entryId: 'tweet-2003',
+                content: {
+                  entryType: 'TimelineTimelineItem',
+                  itemContent: {
+                    tweet_results: {
+                      result: {
+                        __typename: 'TweetWithVisibilityResults',
+                        tweet: {
+                          __typename: 'Tweet',
+                          rest_id: '2003',
+                          legacy: {
+                            id_str: '2003',
+                            full_text: 'wrapped',
+                            favorite_count: 1,
+                            retweet_count: 0,
+                            bookmark_count: 1,
+                            created_at: 'Sat Nov 21 00:00:00 +0000 2026',
+                            views: { count: '9' },
+                          },
+                          core: { user_results: { result: { legacy: { screen_name: 'alice' } } } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ]),
+          ),
+      },
+    ]);
+    const data = await sandbox.XManagerDispatch.handleJob(
+      { id: 'f5', method: 'fetchPostAnalytics', accountId: 'a', accountHandle: 'alice', payload: { fetcherAccountIds: ['a'] } },
+      ctx,
+    );
+    expect(data.items).toHaveLength(2);
+    expect(data.items[0]).toMatchObject({ postId: '2001', views: 0, bookmarks: 0, likes: 5 });
+    expect(data.items[1]).toMatchObject({ postId: '2003', text: 'wrapped', views: 9, likes: 1 });
+  });
 });
 
 describe('投稿の失敗が見える形で返る（再現テスト）', () => {

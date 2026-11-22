@@ -24,7 +24,13 @@
   - [x] 3-4 トークン保存方法の決定 — 2026-11-22 完了（タスク8と同じく拡張の chrome.storage.local にだけ置く。キー `xmanager.mailTokens.v1`、契約は `src/lib/mailTokenStore.ts`。スコープは読み取り専用のみ、トークン値はログに出さない。EMAIL_DESIGN.md の旧記述（アプリパスワード＋safeStorage）を置き換え。テスト7件全パス、全体331件全パス）
   - [ ] 3-5 サブアカウントでの試運転（テストアカウント待ちのため後回し）
 - [ ] **4. 書き込み系の検証**（ガッツ）— 未着手（投稿・いいね・リポスト・ブックマーク・フォロー・削除の実アカウント検証）
-- [ ] **5. 分析・通知/DM集約の実データ確認**（ボブ）— 未着手
+- [x] **5. 分析・通知/DM集約の実データ確認**（ボブ）— 2026-11-22 完了
+  - [x] 5-1 通知・DMの実データ形状の確認 — 拡張の getNotifications は notifications/all.json＋DM inbox_timeline（trusted）を試し、形式違いは not_implemented。確認で不具合を1件発見：通知の at が取得時刻（Date.now()）で、台帳の重複排除キー（accountId|kind|title|at）が再取得で変わり、同じ通知が何度も増える
+  - [x] 5-2 通知の at を応答の時刻から取る（`notification.timestamp` → `sortIndex` → 取得時刻、秒・ミリ秒対応、変な値は弾く）。DM の at も time が読めないときは取得時刻（NaN にならない）
+  - [x] 5-3 集約サービスのテスト追加（`src/lib/notificationService.test.ts`：2回目の取得は0件、空は0件、失敗は黙って0件にしない）
+  - [x] 5-4 分析の写像の検証（`tweetMetrics`：views・bookmark_count 無しは0、墓碑は弾く、可視性ラッパーはほどく。UserTweets からの実測値は Analytics 画面の最終スナップショットに既に配線済み、途中経過だけ simulateMetrics の近似）
+  - [x] 5-5 テスト100%と最終確認（337件全パス、build 通過、拡張 JS は `node --check` 通過、lint エラー0）
+  - 概要：実アカウントでの疎通は未検証（テストアカウント待ち。3-5 と同じ）
 - [ ] **6. 自動投稿・定期チェックの通し確認**（ボブ）— 未着手
 - [ ] **7. ドキュメント・コード整理**（ボブ）— 未着手（exe 廃止に伴うブラウザ前提への寄せ）
 - [x] **8. auth_tokenの安全な取り込み**（ゆい）— 2026-11-21 完了

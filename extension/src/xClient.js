@@ -655,7 +655,7 @@ const XManagerXClient = {
           title: 'DM',
           body: data.text,
           fromHandle: sender?.screen_name,
-          at: typeof data.time === 'string' ? Number(data.time) : Date.now(),
+          at: toEpochMs(data.time) ?? Date.now(),
         });
       }
       return items;
@@ -721,6 +721,29 @@ function tweetMetrics(tweet) {
 }
 
 /**
+ * 応答の時刻らしき値をエポックmsに直す。秒・ミリ秒どちらにも対応し、
+ * あり得ない値（マイクロ秒やゴミ）は null にする。通知・DM の at は
+ * 再取得でも同じ値でないと台帳の重複排除が効かないため、応答の時刻
+ * を優先し、取れないときだけ取得時刻を使う。
+ */
+function toEpochMs(value) {
+  const num =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : NaN;
+  if (!Number.isFinite(num)) return null;
+  const now = Date.now();
+  if (num >= 1_000_000_000_000 && num <= now + 86_400_000) return num;
+  if (num >= 1_000_000_000 && num < 1_000_000_000_000) {
+    const ms = num * 1000;
+    if (ms <= now + 86_400_000) return ms;
+  }
+  return null;
+}
+
+/**
  * 通知一覧の応答を NotificationItem っぽい形に写す。
  * 形式が想定と違えば null を返し、呼び出し側が not_implemented にする。
  */
@@ -740,7 +763,7 @@ function parseNotificationTimeline(json) {
       title: '通知',
       body: text,
       fromHandle: notification.fromUser?.screen_name,
-      at: Date.now(),
+      at: toEpochMs(notification.timestamp) ?? toEpochMs(entry?.sortIndex) ?? Date.now(),
     });
   }
   return items;
