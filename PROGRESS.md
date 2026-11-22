@@ -168,3 +168,12 @@ Phase 1 以降のタスク分解は Phase 0（D-02〜D-05）完了後に行う�
 1. 作業開始前と報告前に必ず git pull し、報告には HEAD のハッシュを添える。
 2. 進捗報告は記憶ではなく実物（コミット、実際に回したテスト結果）に基づいて書く。
 3. 報告が食い違ったら、origin/main と PROGRESS.md を正とする。取りまとめは PM（ゆい）が行う。
+
+## D-02 進捗（2026-11-22 19:20、ボブ、HEAD 69740f6）
+
+実装は完了し、origin/main にプッシュ済み（69740f6、ls-remote で確認）。
+
+- 成果物：`electron/main.cjs`（エントリ）、`electron/src/partition.cjs`（`persist:xmgr-<accountId>` の生成・検証）、`electron/src/host.cjs`（ウィンドウ生成・引数解析・スモーク実行）、`electron/README.md`。`npm run desktop` で x.com を開く。`--smoke` は読み込み確認して終了コード 0/1 と JSON を返す。
+- webPreferences は contextIsolation 有効・nodeIntegration 無効・sandbox 有効。
+- テスト：390件全パス（うち新規15件）。tsc OK、lint エラー0、build 通過、node --check 通過。
+- 未完了：x.com の表示確認。この VM からは x.com への通信が egress プロキシで遮断されるため実施できず。`--smoke` の実機確認も、Chromium がプロキシ環境変数を使わず直接接続するため例示ページでタイムアウトした。表示確認は PC で `npm run desktop` を実行して行う。チェックボックスは未完了のまま。
