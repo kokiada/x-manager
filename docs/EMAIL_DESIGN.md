@@ -36,19 +36,24 @@ Yahoo!メールとその他プロバイダは、IMAP 設定を手入力できる
 プリセットは `EMAIL_IMAP_PRESETS`（`src/db/types.ts`）にあり、台帳の
 provider 種別と連動する。`other` の場合はプリセットなし（手入力）。
 
-### 認証の注意点
+### 認証の注意点（2026-11-22 タスク3-1・3-4の決定で置き換え）
 
-- **Gmail**：通常のパスワードでは IMAP ログインできない。Google アカウントで
-  2段階認証を有効にし、**アプリパスワード**を発行して使う。
-- **Outlook**：Microsoft アカウントでも、基本認証が無効な場合はアプリ
-  パスワードが必要。アプリパスワードが発行できないアカウント（組織管理下
-  など）は **OAuth2**（Microsoft identity platform）での認可が必要になる。
-  その場合は Electron 側で認可コードフローを実装する。
-- 資格情報（アプリパスワード / OAuth2 のリフレッシュトークン）は
-  **Electron の `safeStorage` で暗号化してローカルに保存**する。平文で
-  IndexedDB やファイルに置かない。
+- **Gmail / Outlook ともに OAuth2 のみ**。アプリパスワードは預からない。
+  スコープは読み取り専用の最小権限だけ（Gmail: `gmail.readonly`、
+  Outlook: `Mail.ReadBasic`）。送信・既読化の権限は取らない。
+- OAuth2 のトークン（アクセストークン＋リフレッシュトークン）は、タスク8
+  と同じく拡張の **`chrome.storage.local` にだけ置く**
+  （キー `xmanager.mailTokens.v1`、契約は `src/lib/mailTokenStore.ts`）。
+  アプリ側の IndexedDB（Dexie）やファイルには置かない。Electron の
+  `safeStorage` は exe 廃止で使えないため採用しない。
+- トークン値はログやエラーメッセージに出さない。診断には期限とスコープ
+  だけの要約（`describeMailToken`）を使う。
 
-### なぜ Electron 限定か
+### なぜ Electron 限定か（2026-11-22 タスク3-1の決定で廃止）
+
+以下の設計は exe 廃止・ブラウザ一本化により前提が崩れたため廃止。
+受信チェックは Gmail API / Microsoft Graph 経由の OAuth2 で行い、
+ブラウザ版でも動く（方針A）。記録として残す。
 
 - ブラウザ版（Web アプリ）からは、ブラウザのセキュリティモデル上、
   IMAP（生の TCP/TLS ソケット）に直接つなげない。WebSocket 経由の
