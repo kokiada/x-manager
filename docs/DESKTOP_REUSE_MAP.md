@@ -52,6 +52,35 @@
 | `gmailApi.ts` / `outlookApi.ts` | 264 / 254 | メール受信チェック（OAuth2 readonly） | 流用 | 設計書§5の通り流用。ブラウザで開く認可フローはデスクトップ側の受け口をPhase 1で決める |
 | `mailTokenStore.ts` | 97 | メール用OAuth2トークンの保存方法 | 要確認 | 現行は拡張の chrome.storage.local に置く決定（タスク3-4）。デスクトップ方式での保管先はホスト側に見直す |
 
+## src/lib（実行に直結するもの）— その2：残りの精査（対象 `main` ff2f809）
+
+- 対象：`main` ff2f809（19c267e との差分は PROGRESS.md の1行のみ。行数は ff2f809 時点）。
+- 前回分（jobRunner / bulkPost / banCheck / notification / autoPostEngine / autoActionEngine / scheduledChecks / sessionImport / gmailApi / outlookApi / mailTokenStore）はその1の表のまま。
+
+| ファイル | 行数 | 役割 | 判定 | 備考 |
+|---|---|---|---|---|
+| `bulkActionService.ts` | 204 | 一括アクション（executor経由） | 流用 | `executor` 越しに動くため desktop対応はExecutor層で吸収 |
+| `bulkPost.ts` | 158 | 一括投稿の実行本体（executor経由） | 流用 | 同上 |
+| `autoAction.ts` | 114 | 自動アクションの間隔（同一アカウント10〜30秒・他アカウント2〜6秒） | 流用 | 純粋な待ち時間計算。実行の直列化は設計書§4に合わせるが呼び出し側は同じ |
+| `autoPost.ts` | 193 | 自動投稿ルールの形（random_window / fixed_times / weekly）と投稿スロット | 流用 | 純粋なスケジュール計算 |
+| `searchBanPacing.ts` | 68 | シャドウバンチェックのペーシング（15分枠・50クエリ等） | 流用 | 純粋な計画計算 |
+| `emailLinkCheck.ts` | 78 | メール未紐付けアカウントの検出・共有メール利用状況 | 流用 | DB行に対する純粋関数 |
+| `analytics.ts` | 180 | 分析行の集計（いいね・リポスト等）と取得上限 | 流用 | DB行からの純粋計算。実データの取得はexecutor側で埋める想定（§12-2の注記通り） |
+| `backup.ts` | 314 | 全テーブルのエクスポート／復元（グループ部分集合含む） | 流用 | IndexedDB＋repository越し。デスクトップでもレンダラー側のDBとして同じ形で使える |
+| `csv.ts` | 94 | CSVのパース／生成 | 流用 | 純粋関数 |
+| `accountCsv.ts` | 345 | アカウントCSVの入出力 | 流用 | 同上（`csv.ts` 利用） |
+| `templateCsv.ts` | 237 | テンプレートCSVの入出力（メディア確認・ランダム語含む） | 流用 | 同上 |
+| `demoData.ts` | 359 | デモデータの投入 | 流用 | DBへの投入のみ。実行層と無関係 |
+| `media.ts` | 104 | メディアの確認（拡張子・サイズ・秒数） | 流用 | 純粋関数。UPLOAD本体は xClient 側 |
+| `randomText.ts` | 77 | `[RandomN]` プレースホルダの展開 | 流用 | 純粋関数 |
+| `errorMessage.ts` | 42 | エラーの日本語文案（拡張のCookie不可メッセージ含む） | 作り直し | 文案の対応付けの考え方は流用。拡張再読み込みを促す文言はホスト側の対処に書き換える |
+| `extensionLink.ts` | 17 | 拡張にセッションがあるアカウントの集合 | 作り直し | ホスト側のセッション登録に置き換わる |
+| `extensionPrecheck.ts` | 24 | 拡張の接続確認（`checkExtensionConnection` 経由） | 作り直し | ホストの接続確認に置き換わる。拡張方式用としては残す |
+| `format.ts` | 25 | 数値・時刻・トークンの表示整形 | 流用 | 純粋関数 |
+| `version.ts` | 30 | ビルド時コミットハッシュとバージョン表示 | 流用 | ビルド時注入はElectronでも同じ |
+| `emailLedger.ts` | — | 実装ファイルなし（`emailLedger.test.ts` のみ、repository＋backup越し） | 要確認 | テストが対象にしているのは repository／backup のメール関連関数。専用モジュール化するかはPhase 1で決める |
+| 各 `*.test.ts` | — | 各テスト | 流用 | 完了条件はテスト100%。desktop版は対応するテストを新規追加する |
+
 ## 未決・要確認（Phase 0 で確定するもの）
 
 - `transactionId.js`：生成器流用かDOM実装に戻すか（D-05で確定）。
@@ -59,8 +88,8 @@
 - `mailTokenStore.ts`：メール用トークンの保管先（ホスト側への移し替え）。
 - `queryIds.js`：ページ文脈でのスキャン対象の取得方法。
 - `popup.js` の手入力フォーム：予備として残すかどうか（Phase 1）。
+- `emailLedger.ts`：専用モジュールとして切り出すか（Phase 1）。
 
 ## 次の切り分け（D-01の残り）
 
-- `src/lib` の残り（`bulkActionService.ts`、`autoAction.ts`、`searchBanPacing.ts`、`emailLinkCheck.ts` 等）の実行層との関わりを精査し、この表へ追加する。
-- D-02〜D-05の結果を受けて「要確認」を「流用／作り直し／不要」に倒し、PROGRESS.md の D-01 を完了にする。
+- `src/lib` の精査は完了（その1＋その2）。残りは D-02〜D-05 の結果を受けて「要確認」を「流用／作り直し／不要」に倒し、PROGRESS.md の D-01 を完了にする。
