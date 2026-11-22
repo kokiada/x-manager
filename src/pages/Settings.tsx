@@ -15,6 +15,7 @@ import {
   type ExtensionConnection,
 } from '../executor';
 import { clearDemoData, isDemoAccount } from '../lib/demoData';
+import { APP_BUILD_TIME, APP_COMMIT, formatBuildTime } from '../lib/version';
 import { Button, useToast } from '../components/ui';
 
 function ScheduleFields({
@@ -349,6 +350,14 @@ export function Settings() {
       <p className="dim" style={{ fontSize: 12 }}>
         定期チェックはアプリを開いている間に実行されます。開始時刻を15分以上過ぎた回は見送ります。
         実行状況はバンチェック画面の履歴でも確認できます。
+      </p>
+
+      <h2 className="section-title">バージョン</h2>
+      <p className="dim" style={{ fontSize: 12 }}>
+        実行中のアプリのビルド：コミット {APP_COMMIT}
+        {APP_BUILD_TIME ? `（ビルド ${formatBuildTime(APP_BUILD_TIME)}）` : ''}
+        。最新の修正が入っているかは、リモート main の先頭コミットと見比べてください。
+        サイドバー下部にも同じ表示があります。
       </p>
 
       <div className="toolbar">

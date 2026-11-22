@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
+import { versionLabel } from '../lib/version';
 
 export interface Section {
   no: string;
@@ -85,6 +86,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           DATA: ON-DEVICE / INDEXEDDB
           <br />
           EXECUTOR: {executorLabel}
+          <br />
+          VERSION: {versionLabel()}
         </div>
       </aside>
 

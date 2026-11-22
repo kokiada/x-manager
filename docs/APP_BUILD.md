@@ -37,6 +37,14 @@ npm run build    # 型チェック + 本番ビルド（dist/）
 npm run preview  # dist/ を HTTP 配信
 ```
 
+## 実行中のバージョンの確認
+
+サイドバー下部に `VERSION: <コミット> · <ビルド時刻>` が表示されます（設定画面の「バージョン」にも同じ表示があります）。テストの前に、表示されているコミットがリモート main の先頭と一致しているか確認してください。一致していなければ、実行中のアプリは古いビルドです。
+
+- `npm run dev` は起動時のコミットを表示します。`git pull` のあとは dev サーバーを再起動してください。
+- 旧 Electron 版（http://127.0.0.1:47831/）は内蔵の dist を配信するため、`npm run build` では更新されません。新しいコードを試すときは `npm run dev`（http://localhost:5173/）を使ってください。
+- 拡張のコード（`extension/src/*.js`）はアプリのバージョン表示には含まれません。拡張を変更したときは chrome://extensions で再読み込みしてください。
+
 ## 拡張の連携
 
 1. Chrome で `extension/` を読み込む（`extension/README.md` 参照）。
