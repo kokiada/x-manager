@@ -105,7 +105,7 @@ describe('1日の流れ（定期チェック＋自動投稿の通し）', () => 
       poll: null,
       thread: [],
     });
-    await createAutoPostRule({
+    const rule = await createAutoPostRule({
       name: '朝の投稿',
       enabled: true,
       accountIds: [a.id, b.id],
@@ -114,6 +114,10 @@ describe('1日の流れ（定期チェック＋自動投稿の通し）', () => 
       times: ['10:00'],
       jitterMin: 0,
     });
+    // ルールは2日前から存在していたことにする。今日 10:00 の
+    // スロットが作成時刻より前だと、作ったばかりのルールの
+    // 遡り発火防止に引っかかって発火しないため。
+    await db.autoPostRules.update(rule.id, { createdAt: Date.now() - 2 * 24 * 3600_000 });
     const settings = await getSettings();
     await saveSettings({
       ...settings,
