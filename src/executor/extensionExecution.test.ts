@@ -6,6 +6,7 @@
  * ここでは「正しいリクエストを作る」「応答を正しく読む」「失敗を
  * 正しい分類で返す」ことを検証する。
  */
+import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
@@ -25,12 +26,13 @@ function loadExtension(chromeStub: AnyRecord, fetchStub: AnyRecord) {
     FormData,
     atob,
     btoa,
+    crypto: webcrypto,
   };
   sandbox.self = sandbox;
   sandbox.chrome = chromeStub;
   sandbox.fetch = fetchStub;
   const ctx = createContext(sandbox);
-  for (const file of ['errors.js', 'queryIds.js', 'session.js', 'xClient.js', 'mediaStore.js', 'sessionImport.js', 'dispatch.js']) {
+  for (const file of ['errors.js', 'clientIdentity.js', 'queryIds.js', 'session.js', 'xClient.js', 'mediaStore.js', 'sessionImport.js', 'dispatch.js']) {
     runInContext(
       readFileSync(new URL(`../../extension/src/${file}`, import.meta.url), 'utf8'),
       ctx,
@@ -126,6 +128,7 @@ function makeCtx(opts: {
   resolveQueryId?: (op: string) => Promise<string | null>;
   getTransactionId?: ((method: string, url: string) => Promise<string | null>) | null;
   pendingMedia?: AnyRecord;
+  clientIdentity?: AnyRecord | Promise<AnyRecord> | null;
   mediaStatusDeadlineMs?: number;
   mediaStatusPollMs?: number;
   mediaAppendChunkBytes?: number;
@@ -137,6 +140,7 @@ function makeCtx(opts: {
     resolveQueryId: opts.resolveQueryId || (async () => 'QID'),
     getTransactionId: opts.getTransactionId ?? null,
     pendingMedia: opts.pendingMedia,
+    clientIdentity: opts.clientIdentity ?? null,
     mediaStatusDeadlineMs: opts.mediaStatusDeadlineMs,
     mediaStatusPollMs: opts.mediaStatusPollMs,
     mediaAppendChunkBytes: opts.mediaAppendChunkBytes,
@@ -2404,5 +2408,131 @@ describe('ログイン中のアカウントの取り込み（sessionImport + bac
         ctx,
       ),
     ).resolves.toEqual({ accountId: '999', handle: 'alice' });
+  });
+});
+
+describe('クライアント ID と Referer ルール（clientIdentity.js）', () => {
+  const IDENTITY = { clientUuid: 'a'.repeat(32), deviceId: 'b'.repeat(32) };
+
+  function postSetup(clientIdentity: AnyRecord | Promise<AnyRecord> | null) {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            data: { create_tweet: { tweet_results: { result: { __typename: 'Tweet', rest_id: '555' } } } },
+          }),
+      },
+    ]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({ sessions, chrome: chromeStub, fetch: fetchStub, clientIdentity });
+    return { sandbox, ctx, fetchStub };
+  }
+
+  const postJob = {
+    id: 'ci1',
+    method: 'executePost',
+    accountId: 'a',
+    accountHandle: 'alice',
+    payload: { content: { text: 'テスト' } },
+  };
+
+  it('getIdentity は 32 桁 hex のペアを生成して保存し、次回も同じ値を返す', async () => {
+    const sandbox = loadExtension(makeChromeStub(), makeFetchStub([]));
+    const storage = sandbox.chrome.storage.local;
+    const first = await sandbox.XManagerClientIdentity.getIdentity(storage);
+    expect(first.clientUuid).toMatch(/^[0-9a-f]{32}$/);
+    expect(first.deviceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(first.clientUuid).not.toBe(first.deviceId);
+    const stored = await storage.get(sandbox.XManagerClientIdentity.STORAGE_KEY);
+    expect(stored[sandbox.XManagerClientIdentity.STORAGE_KEY]).toEqual(first);
+    const second = await sandbox.XManagerClientIdentity.getIdentity(storage);
+    expect(second).toEqual(first);
+  });
+
+  it('getIdentity は保存値が壊れていたら作り直す', async () => {
+    const chromeStub = makeChromeStub();
+    const sandbox = loadExtension(chromeStub, makeFetchStub([]));
+    const key = sandbox.XManagerClientIdentity.STORAGE_KEY;
+    chromeStub.storage.local._data[key] = { clientUuid: 'x', deviceId: 42 };
+    const identity = await sandbox.XManagerClientIdentity.getIdentity(chromeStub.storage.local);
+    expect(identity.clientUuid).toMatch(/^[0-9a-f]{32}$/);
+    expect(identity.deviceId).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it('Referer ルールは CreateTweet の POST だけを対象にコンポーザーを指す', () => {
+    const sandbox = loadExtension(makeChromeStub(), makeFetchStub([]));
+    const rules = sandbox.XManagerClientIdentity.buildRefererRules();
+    expect(rules).toHaveLength(1);
+    const rule = rules[0];
+    expect(rule.action.type).toBe('modifyHeaders');
+    expect(rule.action.requestHeaders).toEqual([
+      { header: 'referer', operation: 'set', value: 'https://x.com/compose/post' },
+    ]);
+    expect(rule.condition.requestMethods).toEqual(['post']);
+    const re = new RegExp(rule.condition.regexFilter);
+    expect(re.test('https://x.com/i/api/graphql/AbC123/CreateTweet')).toBe(true);
+    expect(re.test('https://x.com/i/api/graphql/AbC123/DeleteTweet')).toBe(false);
+    expect(re.test('https://x.com/i/api/graphql/AbC123/CreateTweet/extra')).toBe(false);
+    expect(re.test('https://upload.x.com/i/media/upload.json')).toBe(false);
+  });
+
+  it('registerRefererRules は DNR に旧ルールを消してから登録し、無い環境では false', async () => {
+    const sandbox = loadExtension(makeChromeStub(), makeFetchStub([]));
+    const calls: AnyRecord[] = [];
+    const chromeLike = {
+      declarativeNetRequest: {
+        updateDynamicRules: async (arg: AnyRecord) => {
+          calls.push(arg);
+        },
+      },
+    };
+    await expect(sandbox.XManagerClientIdentity.registerRefererRules(chromeLike)).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].removeRuleIds).toEqual([sandbox.XManagerClientIdentity.REFERER_RULE_ID]);
+    expect(calls[0].addRules).toEqual(sandbox.XManagerClientIdentity.buildRefererRules());
+    await expect(sandbox.XManagerClientIdentity.registerRefererRules({})).resolves.toBe(false);
+    const throwing = {
+      declarativeNetRequest: {
+        updateDynamicRules: async () => {
+          throw new Error('dnr unavailable');
+        },
+      },
+    };
+    await expect(sandbox.XManagerClientIdentity.registerRefererRules(throwing)).resolves.toBe(false);
+  });
+
+  it('clientIdentity があると CreateTweet に x-client-uuid / deviceid が付く', async () => {
+    const { sandbox, ctx, fetchStub } = postSetup(IDENTITY);
+    const data = await sandbox.XManagerDispatch.handleJob(postJob, ctx);
+    expect(data.postId).toBe('555');
+    const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(call.opts.headers['x-client-uuid']).toBe(IDENTITY.clientUuid);
+    expect(call.opts.headers['x-twitter-client-deviceid']).toBe(IDENTITY.deviceId);
+  });
+
+  it('clientIdentity が Promise でも待って付ける（background の渡し方）', async () => {
+    const { sandbox, ctx, fetchStub } = postSetup(Promise.resolve(IDENTITY));
+    await sandbox.XManagerDispatch.handleJob(postJob, ctx);
+    const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(call.opts.headers['x-client-uuid']).toBe(IDENTITY.clientUuid);
+  });
+
+  it('clientIdentity が無ければヘッダは付けず、取得に失敗しても投稿は続行する', async () => {
+    const none = postSetup(null);
+    await none.sandbox.XManagerDispatch.handleJob(postJob, none.ctx);
+    const callNone = none.fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(callNone.opts.headers['x-client-uuid']).toBeUndefined();
+    expect(callNone.opts.headers['x-twitter-client-deviceid']).toBeUndefined();
+
+    const failing = postSetup(Promise.reject(new Error('storage broken')));
+    const data = await failing.sandbox.XManagerDispatch.handleJob(postJob, failing.ctx);
+    expect(data.postId).toBe('555');
+    const callFail = failing.fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(callFail.opts.headers['x-client-uuid']).toBeUndefined();
   });
 });

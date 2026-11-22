@@ -4,7 +4,8 @@
  * 返すのは ExtensionExecutor が期待する data の中身（成功時）。
  * 失敗時は code 付きエラーを投げる（background が結果メッセージに写す）。
  *
- * ctx: { sessions, chrome, fetchImpl, resolveQueryId, getTransactionId?, pendingMedia? }
+ * ctx: { sessions, chrome, fetchImpl, resolveQueryId, getTransactionId?, pendingMedia?,
+ *        clientIdentity?: { clientUuid, deviceId } | Promise<...> | null }
  *  - sessions: sessionStore.js と同じ get / setCt0
  *  - chrome: chrome.cookies（実物 or テスト用スタブ）
  *  - fetchImpl: fetch（実物 or テスト用スタブ）
@@ -17,10 +18,19 @@
 
 const XManagerDispatch = {
   async handleJob(job, ctx) {
+    // クライアント ID（clientIdentity.js）は値でも Promise でもよい。
+    // 取れなければ付けずに続行する（従来どおりの動作）。
+    let clientIdentity = null;
+    try {
+      clientIdentity = ctx.clientIdentity ? await ctx.clientIdentity : null;
+    } catch {
+      clientIdentity = null;
+    }
     const client = self.XManagerXClient.createClient({
       fetchImpl: ctx.fetchImpl,
       resolveQueryId: ctx.resolveQueryId,
       getTransactionId: ctx.getTransactionId || null,
+      clientIdentity,
       // テスト用の差し替え（実環境では既定値を使う）。
       mediaStatusDeadlineMs: ctx.mediaStatusDeadlineMs,
       mediaStatusPollMs: ctx.mediaStatusPollMs,

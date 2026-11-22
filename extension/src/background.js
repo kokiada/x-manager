@@ -8,12 +8,13 @@
  */
 'use strict';
 
-/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerSessionImport, XManagerQueryIds, XManagerDispatch, XManagerErrors, XManagerMediaStore */
+/* global chrome, importScripts, XManagerProtocol, XManagerProtocolHelpers, XManagerSessions, XManagerSession, XManagerSessionImport, XManagerQueryIds, XManagerDispatch, XManagerErrors, XManagerMediaStore, XManagerClientIdentity */
 
 importScripts(
   'protocol.js',
   'errors.js',
   'sessionStore.js',
+  'clientIdentity.js',
   'queryIds.js',
   'session.js',
   'xClient.js',
@@ -31,6 +32,23 @@ const pendingMedia = XManagerMediaStore.createMediaStore({});
 const transactionIdGenerator = XManagerTransactionId.createGenerator({
   fetchImpl: fetch,
 });
+
+// 拡張ごとに固定のクライアント ID（x-client-uuid /
+// x-twitter-client-deviceid 用）。初回に生成して保管庫に残す。
+// 取得に失敗しても実行は止めない（ヘッダ無しで続行する）。
+let clientIdentityPromise = null;
+function getClientIdentity() {
+  if (!clientIdentityPromise) {
+    clientIdentityPromise = XManagerClientIdentity.getIdentity(
+      chrome.storage.local,
+    ).catch(() => null);
+  }
+  return clientIdentityPromise;
+}
+
+// CreateTweet の Referer をコンポーザー（https://x.com/compose/post）
+// に寄せる DNR ルールを登録する。失敗しても実行は止めない。
+XManagerClientIdentity.registerRefererRules(chrome);
 
 function resultMessage(jobId, outcome) {
   return {
@@ -106,6 +124,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           storage: chrome.storage.local,
         }),
       getTransactionId: (method, url) => transactionIdGenerator(method, url),
+      clientIdentity: getClientIdentity(),
     })
       .then((result) => {
         sendResponse({ ok: true, accountId: result.accountId, handle: result.handle });
@@ -166,6 +185,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }),
       // x-client-transaction-id の生成器（transactionId.js）。
       getTransactionId: (method, url) => transactionIdGenerator(method, url),
+      // 拡張ごとに固定のクライアント ID（Promise で渡し、dispatch が待つ）。
+      clientIdentity: getClientIdentity(),
     };
     XManagerSessions.get(message.accountId)
       .then((session) => {

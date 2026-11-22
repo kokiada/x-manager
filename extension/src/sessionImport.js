@@ -96,10 +96,17 @@ async function runImport(deps) {
       'Xのセッション確認（ct0）に失敗しました。x.com にログインし直してから、もう一度お試しください。',
     );
   }
+  let clientIdentity = null;
+  try {
+    clientIdentity = deps.clientIdentity ? await deps.clientIdentity : null;
+  } catch {
+    clientIdentity = null;
+  }
   const client = self.XManagerXClient.createClient({
     fetchImpl: deps.fetchImpl,
     resolveQueryId: deps.resolveQueryId,
     getTransactionId: deps.getTransactionId || null,
+    clientIdentity,
   });
   const user = await client.getCurrentUser({ ct0 });
   // トークンは保管庫にだけ入れる。返り値には含めない。

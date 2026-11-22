@@ -103,3 +103,11 @@
 - サイドバー下部に `VERSION: <コミット> · <ビルド時刻>` を表示。設定画面に「バージョン」セクションを追加（コミット＋ビルド時刻、リモート main の先頭と見比べる旨の注記）。
 - `docs/APP_BUILD.md` に確認手順と注意点を追記：`npm run dev` は起動時のコミットを表示するので `git pull` のあとは dev サーバーを再起動すること。旧 Electron 版（47831）は内蔵 dist を配信するため `npm run build` では更新されない。拡張のコードはアプリのバージョン表示の対象外なので、拡張を変更したときは chrome://extensions で再読み込みすること。
 - 検証：テスト363件全パス（version.test.ts 3件を含む）、tsc OK、lint エラー0、build 通過。ビルド後の dist にコミットハッシュが含まれていることも確認。コミット 72de40b をプッシュ済み（リモート main = 72de40b を ls-remote で確認）。
+
+## 2026-11-22 birdy 調査に基づく拡張の指紋寄せ（ボブ割り振り、ゆい実施）
+
+- 背景：3-1（通常投稿）の 344（X の一時的な投稿制限）について、こうきくんの提案で類似 OSS「birdy」（クッキーセッション＋複数アカウントの CLI）の投稿実装を調査。birdy 側の対処の本体はアカウントのローテーションと間隔で、投稿リクエスト自体は (1) CreateTweet の Referer を https://x.com/compose/post にする、(2) x-client-uuid / x-twitter-client-deviceid（クライアント固定値）を送る、(3) x-client-transaction-id はランダム hex で足りるとしている、という差分があった。ボブの決定で (1)(2) を取り込み、(3) は現行の生成器のまま変更なし、ローテーションはテストアカウント1件のため見送り。
+- 実装：新規 `extension/src/clientIdentity.js`。ID は初回に生成して chrome.storage.local（キー `xmanager.clientIdentity.v1`）に保存し、全リクエストで同じ値を送る。Referer は fetch では書き換えられないため declarativeNetRequest の動的ルールで CreateTweet の POST だけに設定（manifest に `declarativeNetRequest` 権限を追加）。ルール登録や ID 取得に失敗しても実行は止めない（従来動作にフォールバック）。
+- 配線：background が起動時にルール登録し、ジョブ／取り込みの両経路へ clientIdentity（Promise）を渡す。dispatch / sessionImport は待ってから xClient に渡し、xClient の headers() が両ヘッダを付ける。
+- 検証：テスト370件全パス（新規7件：ID の生成・保存・安定性、壊れた保存値の作り直し、ルールの正規表現と対象、DNR 登録の成否、ヘッダ付与の有無と失敗時の継続）。tsc OK、lint エラー0、build 通過、拡張 JS は `node --check` 通過。
+- 実アカウントでの効果確認は 3-1 再テスト（ボブ）待ち。バージョン表記でコミットを確認し、拡張は chrome://extensions で再読み込みが必要。

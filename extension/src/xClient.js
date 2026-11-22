@@ -20,7 +20,8 @@
  *    ことがある。読めない形式なら not_implemented を返す。
  *
  * deps: { fetchImpl, resolveQueryId: (op) => Promise<string|null>,
- *         getTransactionId?: (method, path) => Promise<string|null> }
+ *         getTransactionId?: (method, path) => Promise<string|null>,
+ *         clientIdentity?: { clientUuid, deviceId } | null }
  * 返るクライアントの各メソッドは第1引数に auth {ct0} を取る。
  */
 'use strict';
@@ -83,6 +84,15 @@ const XManagerXClient = {
     const fetchImpl = deps.fetchImpl;
     const resolveQueryId = deps.resolveQueryId;
     const getTransactionId = deps.getTransactionId || null;
+    // 拡張ごとに固定のクライアント ID（clientIdentity.js）。本物の
+    // Web クライアントが端末ごとに安定して送る x-client-uuid /
+    // x-twitter-client-deviceid を模す。無ければ付けない。
+    const clientIdentity =
+      deps.clientIdentity &&
+      typeof deps.clientIdentity.clientUuid === 'string' &&
+      typeof deps.clientIdentity.deviceId === 'string'
+        ? deps.clientIdentity
+        : null;
     // 動画の処理待ち（STATUS 確認）の締切・間隔。既定は60秒・3秒。
     // テストでは短くできるように deps で差し替えられる。
     const mediaStatusDeadlineMs =
@@ -104,6 +114,10 @@ const XManagerXClient = {
         origin: 'https://x.com',
         referer: 'https://x.com/',
       };
+      if (clientIdentity) {
+        h['x-client-uuid'] = clientIdentity.clientUuid;
+        h['x-twitter-client-deviceid'] = clientIdentity.deviceId;
+      }
       // 既定は JSON。FormData（multipart）のときは fetch に境界を
       // 付けさせるため、content-type を付けない（json=false）。
       if (json !== false) h['content-type'] = 'application/json';

@@ -32,7 +32,8 @@
   "permissions": [
     "cookies",
     "storage",
-    "tabs"
+    "tabs",
+    "declarativeNetRequest"
   ],
   "version": "0.1.0"
 }
