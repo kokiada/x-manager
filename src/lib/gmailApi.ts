@@ -2,9 +2,7 @@
  * Gmail API（readonly）経由の受信チェック — タスク3-2。
  *
  * 方針A（Gmail API / Microsoft Graph 経由の OAuth2）の Gmail 側。
- * 現行の EMAIL_DESIGN.md は「Electron 限定・IMAP・アプリパスワード」
- * だったが、exe 廃止・ブラウザ一本化により前提が崩れたため、
- * ブラウザから HTTPS で呼べる Gmail API に切り替える。
+ * ブラウザから HTTPS で呼べる Gmail API を使う。
  *
  * このモジュールは読み取り専用。スコープは gmail.readonly のみで、
  * 送信・既読化・フォルダ移動はしない（MVP の外）。

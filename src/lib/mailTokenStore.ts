@@ -3,9 +3,8 @@
  *
  * 決定：タスク8（auth_token の安全な取り込み）と同じく、拡張の
  * `chrome.storage.local` にだけ置く。アプリ側の IndexedDB（Dexie）
- * やファイルには置かない。Electron の safeStorage は exe 廃止で
- * 使えないため採用しない。EMAIL_DESIGN.md の旧記述（アプリパスワード
- * ＋ safeStorage）はこの決定で置き換える。
+ * やファイルには置かない。ブラウザでは OS の資格情報ストアを
+ * 使えないため採用しない。
  *
  * 保管するもの：プロバイダごとの OAuth2 トークン 1 件ずつ。
  * スコープは読み取り専用の最小権限だけ（Gmail: gmail.readonly、

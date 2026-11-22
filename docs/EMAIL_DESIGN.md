@@ -36,6 +36,9 @@ Yahoo!メールとその他プロバイダは、IMAP 設定を手入力できる
 プリセットは `EMAIL_IMAP_PRESETS`（`src/db/types.ts`）にあり、台帳の
 provider 種別と連動する。`other` の場合はプリセットなし（手入力）。
 
+Gmail / Outlook は方針A（OAuth2）のため、この表のアプリパスワード認証は
+使わない。IMAP プリセットは Yahoo!メールとその他の将来対応用に残す。
+
 ### 認証の注意点（2026-11-22 タスク3-1・3-4の決定で置き換え）
 
 - **Gmail / Outlook ともに OAuth2 のみ**。アプリパスワードは預からない。
@@ -44,25 +47,10 @@ provider 種別と連動する。`other` の場合はプリセットなし（手
 - OAuth2 のトークン（アクセストークン＋リフレッシュトークン）は、タスク8
   と同じく拡張の **`chrome.storage.local` にだけ置く**
   （キー `xmanager.mailTokens.v1`、契約は `src/lib/mailTokenStore.ts`）。
-  アプリ側の IndexedDB（Dexie）やファイルには置かない。Electron の
-  `safeStorage` は exe 廃止で使えないため採用しない。
+  アプリ側の IndexedDB（Dexie）やファイルには置かない。ブラウザでは
+  OS の資格情報ストアを使えないため採用しない。
 - トークン値はログやエラーメッセージに出さない。診断には期限とスコープ
   だけの要約（`describeMailToken`）を使う。
-
-### なぜ Electron 限定か（2026-11-22 タスク3-1の決定で廃止）
-
-以下の設計は exe 廃止・ブラウザ一本化により前提が崩れたため廃止。
-受信チェックは Gmail API / Microsoft Graph 経由の OAuth2 で行い、
-ブラウザ版でも動く（方針A）。記録として残す。
-
-- ブラウザ版（Web アプリ）からは、ブラウザのセキュリティモデル上、
-  IMAP（生の TCP/TLS ソケット）に直接つなげない。WebSocket 経由の
-  中継サーバーが必要になるが、それは資格情報を外部に預けることになり、
-  XBoard の「データは端末内だけ」という方針と合わない。
-- Electron のメインプロセス（Node.js）なら `imapflow` 等の IMAP
-  クライアントをそのまま使える。資格情報も `safeStorage` で OS の
-  資格情報ストアに預けられる。したがって受信チェックは **Electron 版
-  限定の機能**とし、ブラウザ版では台帳の管理だけを行う。
 
 ### MVP の範囲
 
@@ -75,10 +63,10 @@ provider 種別と連動する。`other` の場合はプリセットなし（手
 
 ### 実装の進め方（次フェーズ以降）
 
-1. `imapflow` を Electron の依存関係に追加し、メインプロセスに
-   IMAP クライアントを実装する（接続・認証・ヘッダ取得・切断）。
-2. 資格情報の保存・読み込みを `safeStorage` で実装する（暗号化）。
-3. レンダラー（Web アプリ）とメインプロセスの IPC で「受信チェック実行」
-   をつなぐ（`electron/preload.cjs` 経由）。
-4. Gmail / Outlook のプリセット接続を、サブアカウントで試運転する。
-5. OAuth2 が必要な Outlook アカウントは、認可フローを別途実装する。
+Gmail / Outlook の API 呼び出し層（`src/lib/gmailApi.ts`・`src/lib/outlookApi.ts`）
+とトークン保存の契約（`src/lib/mailTokenStore.ts`）は実装済み。
+残りは次の2点。
+
+1. OAuth2 の認可フロー（利用者が Gmail / Outlook の認可をして
+   トークンを `xmanager.mailTokens.v1` に入れる画面・手順）を実装する。
+2. Gmail / Outlook の接続を、サブアカウントで試運転する（タスク3-5）。

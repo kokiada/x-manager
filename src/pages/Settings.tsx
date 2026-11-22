@@ -254,19 +254,10 @@ export function Settings() {
         )}
         <Button onClick={checkExtension} disabled={checkingExt}>
           {checkingExt ? '確認中…' : '接続を確認'}
-        </Button>{' '}
-        {typeof window !== 'undefined' && window.electronAPI && (
-          <Button
-            onClick={() => {
-              void window.electronAPI?.openExtensionPopup();
-            }}
-          >
-            拡張の連携画面を開く
-          </Button>
-        )}
+        </Button>
         <div className="hint">
           拡張を読み込んだ Chrome でこのアプリを開いているときに確認できます。拡張が未接続のまま「拡張」を選んで保存すると、操作はエラーになります（シミュレータには戻りません）。
-          アプリ版（Electron）では拡張は自動で読み込まれ、連携画面はメニューの「拡張」からも開けます。
+          連携画面は拡張のポップアップから開けます。
           連携しただけではアプリのアカウント一覧には増えません。アカウント画面で「拡張の連携を取り込む」を押すと、連携したアカウントが台帳に入ります。
         </div>
       </div>

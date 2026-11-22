@@ -38,7 +38,11 @@
   - [x] 6-4 確認で見つけた不具合2件を修正：(1) tickAutoPost が今日の発火済みキーしか見ず、処理済みの遅刻スロットを毎日スキップ記録として重ねていた（今日＋昨日のキーを見るようにした）。(2) timeTodayMs が '25:00' のような範囲外の時刻を翌日へ繰り越して有効にしてしまっていた（0-23時・0-59分で弾く）。ついでにタスク5のテストのフレーキー（通知行の並びを主キー順と決めつけていた）も直した
   - [x] 6-5 テスト100%と最終確認（356件全パス、5回連続で全パス、build 通過、拡張 JS は `node --check` 通過、lint エラー0）
   - 概要：実アカウントでの疎通は未検証（テストアカウント待ち。3-5 と同じ）。自動アクションの定期サイクル（`runAutoActionCycle`、発火元はデモ投稿）は未検証のまま
-- [ ] **7. ドキュメント・コード整理**（ボブ）— 未着手（exe 廃止に伴うブラウザ前提への寄せ）
+- [x] **7. ドキュメント・コード整理**（ボブ）— 2026-11-22 完了（exe 廃止に伴うブラウザ前提への寄せ）
+  - [x] 7-1 コード：`electron/`（main.cjs / preload.cjs）、`src/electron.d.ts`、`build/icons/`、`scripts/make-icons.py` を削除。設定画面の Electron 限定ボタンと説明文を削除。`electron` / `electron-builder` の依存を外し、`app` / `dist:win` スクリプトと `main` / `build` 設定を `package.json` から削除（`npm ci` で lockfile の整合性を確認済み）
+  - [x] 7-2 ドキュメント：`docs/APP_BUILD.md` をブラウザ版のビルド・起動手順に書き換え。`docs/EMAIL_DESIGN.md` から廃止済みの Electron 限定設計と IMAP 実装手順を削除し、残課題（OAuth2 認可フロー・試運転）を明記。`docs/REAL_X_DESIGN.md` のデータ置き場所をブラウザ前提に修正。`extension/README.md` から Electron 版の読み込み節を削除
+  - [x] 7-3 検証：テスト356件全パス、build 通過、拡張 JS は `node --check` 通過、lint エラー0。`npm ci` も通過
+  - 残したもの：`docs/xboard-research.md` の XBoard 本家インストーラの記述（他社製品の調査記録のため）、PROGRESS.md の過去の記録
 - [x] **8. auth_tokenの安全な取り込み**（ゆい）— 2026-11-21 完了
   - [x] 8-1 拡張側：ログイン中アカウントのCookie読み取りと身元解決（`sessionImport.js` 新規。auth_token・ct0 を Cookie から直接読む。ct0 が無ければ x.com を開いてから再読。`xClient.getCurrentUser` は `account/verify_credentials.json` で数値ユーザーIDとハンドルを確認。返り値はIDとハンドルのみでトークンは出さない。Cookie API が使えなければ extension_broken、未ログインは日本語エラー）
   - [x] 8-2 画面側：取り込みボタンと表示（ポップアップに「今ログイン中のアカウントを取り込む」ボタンを追加。成功時は `@ハンドル を取り込みました。` と表示して一覧を更新。background に `import-current-account`（送信元 `x-manager-popup`）の受付を追加。手入力の登録は予備として残す。プロトコル正本・ミラーに `POPUP_SOURCE` を追加して同期テストも更新）
