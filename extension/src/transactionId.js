@@ -146,6 +146,32 @@ const XManagerTransactionId = {
       }
     }
 
+    /**
+     * 生成できるかどうかを、理由つきで確かめる（ポップアップの
+     * 「生成テスト」用）。getTransactionId は失敗を握りつぶして
+     * null を返すので、切り分けにはこちらを使う。成功時は鍵が
+     * キャッシュされ、その後の書き込みでもそのまま使われる。
+     */
+    getTransactionId.probe = async () => {
+      try {
+        const keys = await ensureKeys();
+        const id = await internals.buildTransactionId(
+          keys,
+          'POST',
+          '/i/api/graphql/probe/CreateTweet',
+          { now, random },
+        );
+        return id
+          ? { ok: true }
+          : { ok: false, error: '生成結果が空でした。' };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    };
+
     return getTransactionId;
   },
 

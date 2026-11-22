@@ -2245,6 +2245,28 @@ describe('ログイン中のアカウントの取り込み（sessionImport + bac
     expect(stored!['12345']).toMatchObject({ authToken: 'a'.repeat(40), handle: 'testuser' });
   });
 
+  it('probe-transaction-id は生成の失敗を理由つきで返す（ポップアップの生成テスト）', async () => {
+    const chromeStub = makeChromeStub() as AnyRecord;
+    const fetchStub = makeFetchStub([
+      {
+        match: (url: string) => url.includes('x.com/i/jf/'),
+        handle: () => textResponse(403, 'denied'),
+      },
+    ]);
+    const { getListener } = loadBackgroundForImport(chromeStub, fetchStub);
+    const result = await new Promise<AnyRecord>((resolve) => {
+      getListener()!(
+        { source: 'x-manager-popup', kind: 'probe-transaction-id' },
+        {},
+        (r: unknown) => resolve(r as AnyRecord),
+      );
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('403');
+    // 生成した値そのものは応答に含めない（成否と理由だけ）。
+    expect(JSON.stringify(result)).not.toContain('x-client-transaction-id');
+  });
+
   it('auth_token の Cookie が無ければ「Xにログインしていません」を返す', async () => {
     const chromeStub = makeChromeStub() as AnyRecord;
     const fetchStub = makeFetchStub([
@@ -2520,6 +2542,47 @@ describe('クライアント ID と Referer ルール（clientIdentity.js）', (
     await sandbox.XManagerDispatch.handleJob(postJob, ctx);
     const call = fetchStub.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
     expect(call.opts.headers['x-client-uuid']).toBe(IDENTITY.clientUuid);
+  });
+
+  it('226 のエラーにはトランザクションIDを付けたかどうかが付記される', async () => {
+    const routes226 = [
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(200, {
+            errors: [{ code: 226, message: 'This request looks like it might be automated.' }],
+          }),
+      },
+    ];
+    const sessions = () =>
+      makeSessionsStub({ a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' } });
+
+    // 生成器なし（=生成失敗でヘッダ無し）→「付けずに送りました」
+    const chromeStub1 = makeChromeStub();
+    const fetchStub1 = makeFetchStub(routes226);
+    const sandbox1 = loadExtension(chromeStub1, fetchStub1);
+    const ctx1 = makeCtx({ sessions: sessions(), chrome: chromeStub1, fetch: fetchStub1 });
+    await expect(sandbox1.XManagerDispatch.handleJob(postJob, ctx1)).rejects.toMatchObject({
+      code: 'x_error',
+      message: expect.stringContaining('付けずに送りました'),
+    });
+
+    // 生成器あり →「付けて送りました」
+    const chromeStub2 = makeChromeStub();
+    const fetchStub2 = makeFetchStub(routes226);
+    const sandbox2 = loadExtension(chromeStub2, fetchStub2);
+    const ctx2 = makeCtx({
+      sessions: sessions(),
+      chrome: chromeStub2,
+      fetch: fetchStub2,
+      getTransactionId: async () => 'tid-value',
+    });
+    await expect(sandbox2.XManagerDispatch.handleJob(postJob, ctx2)).rejects.toMatchObject({
+      code: 'x_error',
+      message: expect.stringContaining('付けて送りました'),
+    });
+    const call = fetchStub2.calls.find((c: AnyRecord) => c.url.includes('CreateTweet'));
+    expect(call.opts.headers['x-client-transaction-id']).toBe('tid-value');
   });
 
   it('clientIdentity が無ければヘッダは付けず、取得に失敗しても投稿は続行する', async () => {

@@ -192,4 +192,37 @@ describe('transactionId.js（x-client-transaction-id 生成器）', () => {
     const gen = sandbox.XManagerTransactionId.createGenerator({ fetchImpl: fetchStub });
     await expect(gen('POST', 'not a url')).resolves.toBeNull();
   });
+
+  it('probe は生成できる環境では ok:true を返し、鍵をキャッシュする', async () => {
+    const fetchStub = makeFetchStub();
+    const sandbox = loadModule(fetchStub);
+    const gen = sandbox.XManagerTransactionId.createGenerator({ fetchImpl: fetchStub });
+    await expect(gen.probe()).resolves.toEqual({ ok: true });
+    // probe で初期化した鍵は、その後の生成でも取り直されない。
+    const id = await gen('POST', 'https://x.com/i/api/graphql/QID/CreateTweet');
+    expect(typeof id).toBe('string');
+    expect(fetchStub.calls.filter((c: AnyRecord) => c.url === 'https://x.com/i/jf/')).toHaveLength(1);
+  });
+
+  it('probe は失敗の理由を返す（シェル取得失敗・メタタグ無し）', async () => {
+    const failingHome = async (url: string) => {
+      if (url === 'https://x.com/i/jf/') return textResponse(403, 'denied');
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    const sandbox1 = loadModule(failingHome);
+    const gen1 = sandbox1.XManagerTransactionId.createGenerator({ fetchImpl: failingHome });
+    const r1 = await gen1.probe();
+    expect(r1.ok).toBe(false);
+    expect(r1.error).toContain('403');
+
+    const noMeta = async (url: string) => {
+      if (url === 'https://x.com/i/jf/') return textResponse(200, '<html><head></head><body></body></html>');
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    const sandbox2 = loadModule(noMeta);
+    const gen2 = sandbox2.XManagerTransactionId.createGenerator({ fetchImpl: noMeta });
+    const r2 = await gen2.probe();
+    expect(r2.ok).toBe(false);
+    expect(r2.error).toContain('twitter-site-verification');
+  });
 });

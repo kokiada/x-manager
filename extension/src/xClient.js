@@ -212,7 +212,15 @@ const XManagerXClient = {
         const first = json.errors[0];
         const message =
           typeof first === 'string' ? first : first.message || JSON.stringify(first);
-        throw errors.makeError('x_error', `Xがエラーを返しました：${message}`);
+        // 226（自動化の疑い）などの切り分けには、トランザクションIDを
+        // 付けて送ったかどうかが決定的な手がかりになる。本文のエラー
+        // だけでは分からないので、書き込み時は付記する。
+        const tidNote = isWrite
+          ? txAttached
+            ? '（トランザクションIDは付けて送りました）'
+            : '（トランザクションIDの生成に失敗し、付けずに送りました）'
+          : '';
+        throw errors.makeError('x_error', `Xがエラーを返しました：${message}${tidNote}`);
       }
       return json;
     }

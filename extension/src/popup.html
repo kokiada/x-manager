@@ -44,6 +44,11 @@
   <div class="row">
     <button id="add" class="primary" type="button">連携する</button>
   </div>
+  <h2 style="font-size:13px;margin:12px 0 4px">投稿の事前チェック</h2>
+  <p class="note">書き込みに必要なトランザクションIDを生成できるか、投稿せずに確認できます。生成できないまま送ると、Xに自動化と疑われやすくなります（エラー226）。</p>
+  <div class="row">
+    <button id="probe-tid" type="button">トランザクションIDの生成をテスト</button>
+  </div>
   <p id="status" role="status"></p>
   <p class="note">取り込みは、X にログイン中のアカウントが対象です。複数アカウントを使う場合は、X でアカウントを切り替えてから同じ操作を繰り返してください。</p>
   <p class="note">手入力で登録する場合は、auth_token は X にログインしたブラウザの Cookie から取得します（開発者ツール → アプリケーション → Cookie → https://x.com）。</p>

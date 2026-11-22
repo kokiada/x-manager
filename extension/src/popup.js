@@ -67,6 +67,25 @@ document.getElementById('import-current').addEventListener('click', async () => 
   }
 });
 
+document.getElementById('probe-tid').addEventListener('click', async () => {
+  setStatus('生成テスト中…');
+  try {
+    const res = await chrome.runtime.sendMessage({
+      kind: 'probe-transaction-id',
+      source: XManagerProtocol.POPUP_SOURCE,
+    });
+    if (res && res.ok) {
+      setStatus('トランザクションIDを生成できました。投稿時にヘッダを付けて送れます。', true);
+    } else {
+      setStatus(
+        `トランザクションIDを生成できませんでした：${res && res.error ? res.error : '不明なエラー'}。このまま送るとヘッダ無しになります。`,
+      );
+    }
+  } catch (err) {
+    setStatus(err instanceof Error ? err.message : String(err));
+  }
+});
+
 document.getElementById('add').addEventListener('click', async () => {
   const accountId = accountIdEl.value.trim();
   const authToken = tokenEl.value.trim();

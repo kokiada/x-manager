@@ -139,6 +139,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // 非同期で sendResponse する
   }
 
+  // トランザクションIDの生成テスト（ポップアップから）。
+  // 生成は失敗すると黙ってヘッダ無しになるため、投稿を試す前に
+  // 理由つきで成否を確認できるようにする。値は応答に含めない。
+  if (
+    message.kind === 'probe-transaction-id' &&
+    message.source === XManagerProtocol.POPUP_SOURCE
+  ) {
+    transactionIdGenerator
+      .probe()
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((err) => {
+        sendResponse({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    return true; // 非同期で sendResponse する
+  }
+
   // メディア本体のチャンク転送：保管庫に積み、受領応答を返す。
   if (message.kind === 'media-chunk' && message.source === XManagerProtocol.PAGE_SOURCE) {
     try {
