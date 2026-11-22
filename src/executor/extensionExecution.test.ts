@@ -453,6 +453,11 @@ describe('投稿（dispatch + xClient）', () => {
     expect(call.opts.headers['x-twitter-auth-type']).toBe('OAuth2Session');
     const body = JSON.parse(call.opts.body);
     expect(body.variables.tweet_text).toBe('こんにちは');
+    // CreateTweet の media は X の実スキーマ通り possibly_sensitive: false。
+    // 2026-11-22 の実テストで 422 になった原因：旧実装は存在しない
+    // possibly_media: [] を送っていた。
+    expect(body.variables.media).toEqual({ media_entities: [], possibly_sensitive: false });
+    expect(body.variables.media.possibly_media).toBeUndefined();
   });
 
   it('getTransactionId があれば書き込みに x-client-transaction-id を付ける', async () => {
@@ -1907,6 +1912,42 @@ describe('投稿の失敗が見える形で返る（再現テスト）', () => {
       code: 'x_error',
       message: expect.stringContaining('query ID'),
     });
+  });
+
+  it('GraphQL の 422 は X の errors[0].message を含めて返す', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([
+      {
+        match: GRAPHQL('CreateTweet'),
+        handle: () =>
+          jsonResponse(422, {
+            errors: [{ message: 'Variable $variables: Field possibly_media is not defined.' }],
+          }),
+      },
+    ]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({ sessions, chrome: chromeStub, fetch: fetchStub });
+    let thrown: unknown;
+    try {
+      await sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'j-422',
+          method: 'executePost',
+          accountId: 'a',
+          accountHandle: 'alice',
+          payload: { content: { text: 'x' } },
+        },
+        ctx,
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toMatchObject({ code: 'x_error' });
+    expect((thrown as { message: string }).message).toContain('HTTP 422');
+    expect((thrown as { message: string }).message).toContain('possibly_media is not defined');
   });
 });
 

@@ -48,3 +48,12 @@
   - [x] 8-2 画面側：取り込みボタンと表示（ポップアップに「今ログイン中のアカウントを取り込む」ボタンを追加。成功時は `@ハンドル を取り込みました。` と表示して一覧を更新。background に `import-current-account`（送信元 `x-manager-popup`）の受付を追加。手入力の登録は予備として残す。プロトコル正本・ミラーに `POPUP_SOURCE` を追加して同期テストも更新）
   - [x] 8-3 テスト100%と最終確認（275件全パス、build 通過、拡張 JS は `node --check` 通過、lint エラー0）
   - 概要：トークンをコピー＆ペーストする方式をやめ、拡張が自分の Cookie 権限で直接読む方式に。実アカウントでの疎通は未検証。
+
+## 3-5 試運転中の不具合修正（2026-11-22、テスト計画 0-1〜3-2 の実行で発覚）
+- 2-1 再実行は OK（チェック成功、フォロワー 304→303、最終チェック 10:47 に更新）。
+- 3-1 は HTTP 422 で投稿失敗。原因は `extension/src/xClient.js` の CreateTweet variables が存在しないフィールド `possibly_media: []` を送っていたこと。X の実スキーマは `media: { media_entities, possibly_sensitive: false }`（公開の twikit / x-kit 等と一致）。`possibly_sensitive: false` に修正。テストで media の形を固定（`extensionExecution.test.ts`：`possibly_media` が無いことも確認）。
+- 同時に `requestJson` の汎用エラー分岐で X の応答本文を落としていた問題も修正。422 などは `errors[0].message`（無ければ本文先頭300文字）を含めて返す。422 の本文伝達テストを追加。
+- サイドバーが常に `EXECUTOR: SIMULATOR` と表示されていたのは `AppShell.tsx` の固定文言が原因。保存済みの `executorMode` を読んで `EXECUTOR: EXTENSION / SIMULATOR` を出すように修正。アカウント画面の「チェックはシミュレータ Executor 経由」も実行方法に合わせて切り替わるように修正。
+- 3-1 失敗後に一括投稿の「予約・履歴」タブを開くと画面全体が真っ黒になり操作不能になる現象が2回再現。描画例外時に ErrorBoundary が無く React 全体が落ちていたのが原因とみられる（静的解析では特定の throw は断定できず）。対策：`src/components/ErrorBoundary.tsx` を追加し `main.tsx` でアプリ全体を囲む（例外時はメッセージと再読み込みボタンを表示）。ついでに `JobHistory.tsx` の `segments[0].slice` と `job.entries` を空安全にした。
+- 検証：テスト357件全パス（新規422テスト含む）、tsc OK、lint エラー0、build 通過、拡張 JS は `node --check` 通過。
+- 再テスト待ち：3-1 の再実行と履歴タブの確認は、Koki 側で `git pull` → `npm run build` → アプリ再起動＋拡張の再読み込み後にブラウザで実施する。

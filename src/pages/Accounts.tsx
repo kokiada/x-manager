@@ -28,6 +28,7 @@ export function Accounts() {
   const navigate = useNavigate();
 
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], undefined);
+  const settingsRow = useLiveQuery(() => db.settings.get('app'), [], undefined);
   const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), [], []);
   const proxyGroups = useLiveQuery(() => db.proxyGroups.toArray(), [], []);
   const emails = useLiveQuery(() => db.emailAddresses.toArray(), [], []);
@@ -378,7 +379,8 @@ export function Accounts() {
       </div>
 
       <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
-        行をクリックすると詳細が開きます。削除は詳細画面から行えます。チェックはシミュレータ
+        行をクリックすると詳細が開きます。削除は詳細画面から行えます。チェックは
+        {settingsRow?.settings.executorMode === 'extension' ? 'Chrome 拡張' : 'シミュレータ'}
         Executor 経由で実行され、結果は台帳に反映されます。
       </p>
 

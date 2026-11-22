@@ -17,8 +17,9 @@ const ENTRY_BADGE_CLASS: Record<PostJobEntryStatus, string> = {
 
 export function JobCard({ job }: { job: PostJob }) {
   const toast = useToast();
-  const doneCount = job.entries.filter((e) => e.status === 'done').length;
-  const total = job.entries.length;
+  const entries = job.entries ?? [];
+  const doneCount = entries.filter((e) => e.status === 'done').length;
+  const total = entries.length;
 
   const removePosts = async (accountId: string, handle: string) => {
     if (!window.confirm(`@${handle} の投稿（ツリー含む）を削除しますか？`)) return;
@@ -57,7 +58,7 @@ export function JobCard({ job }: { job: PostJob }) {
         )}
       </div>
       <div className="job-entries">
-        {job.entries.map((e) => (
+        {entries.map((e) => (
           <div key={e.accountId} className="entry-row">
             <span className={`badge ${ENTRY_BADGE_CLASS[e.status]}`}>
               {POST_JOB_ENTRY_LABELS[e.status]}
@@ -132,7 +133,7 @@ export function JobHistory() {
           </span>
           <span className="pick-main">
             <strong style={{ fontSize: 13 }}>
-              {r.payload.segments[0].slice(0, 40) || '（メディア/アンケート）'}
+              {(r.payload.segments[0] ?? '').slice(0, 40) || '（メディア/アンケート）'}
               {r.payload.segments.length > 1 && ` ＋ツリー${r.payload.segments.length - 1}`}
             </strong>
             <span className="faded" style={{ display: 'block', fontSize: 12 }}>

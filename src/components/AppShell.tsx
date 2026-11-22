@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db/db';
 
 export interface Section {
   no: string;
@@ -63,6 +65,8 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const settingsRow = useLiveQuery(() => db.settings.get('app'), [], undefined);
+  const executorLabel = settingsRow?.settings.executorMode === 'extension' ? 'EXTENSION' : 'SIMULATOR';
 
   return (
     <div className="shell">
@@ -80,7 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="sidebar-foot">
           DATA: ON-DEVICE / INDEXEDDB
           <br />
-          EXECUTOR: SIMULATOR
+          EXECUTOR: {executorLabel}
         </div>
       </aside>
 

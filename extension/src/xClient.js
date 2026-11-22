@@ -163,7 +163,25 @@ const XManagerXClient = {
         );
       }
       if (!res.ok) {
-        throw errors.makeError('x_error', `Xからの応答が異常です（HTTP ${res.status}）。`);
+        // その他の 4xx/5xx: X の応答本文（errors[0].message 等）を含めて返す。
+        // 422 は variables の検証失敗で返ることが多く、本文なしでは原因が
+        // 特定できない（2026-11-22 の 3-1 はここで詳細を落としていた）。
+        let detail = '';
+        try {
+          const text = await res.text();
+          if (text) {
+            try {
+              const parsed = JSON.parse(text);
+              const first = parsed?.errors?.[0]?.message;
+              detail = first ? `: ${String(first)}` : `: ${text.slice(0, 300)}`;
+            } catch {
+              detail = `: ${text.slice(0, 300)}`;
+            }
+          }
+        } catch {
+          // 本文が読めなくてもステータスだけは返す。
+        }
+        throw errors.makeError('x_error', `Xからの応答が異常です（HTTP ${res.status}）${detail}。`);
       }
       // APPEND など応答が空の操作は JSON を読まない。
       if (expectJson === false) return null;
@@ -244,7 +262,7 @@ const XManagerXClient = {
           : undefined,
         media: {
           media_entities: (mediaIds || []).map((id) => ({ media_id: id, tagged_users: [] })),
-          possibly_media: [],
+          possibly_sensitive: false,
         },
         dark: false,
         semantic_annotation_ids: [],
