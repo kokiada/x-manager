@@ -143,6 +143,14 @@ export class SimulatorExecutor implements Executor {
     return result;
   }
 
+  async resolveAccountIdentity(
+    _accountId: string,
+  ): Promise<{ accountId: string; handle: string }> {
+    // シミュレータには本物のセッションが無い。取り込みの本人確認は
+    // 拡張モードでのみ行う。
+    throw new Error('本人確認は拡張モードでのみ使えます');
+  }
+
   async checkSearchBan(
     account: Account,
     viaAccount: Account,

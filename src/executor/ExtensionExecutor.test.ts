@@ -291,6 +291,40 @@ describe('ExtensionExecutor', () => {
     expect(result.followers).toBe(100);
   });
 
+  it('resolveAccountIdentity は拡張の本人確認結果を返す', async () => {
+    const transport = fakeTransport((job) => ({
+      id: job.id,
+      ok: true,
+      data: { accountId: '999', handle: 'alice' },
+      at: 12,
+    }));
+    const executor = new ExtensionExecutor(transport);
+    await expect(executor.resolveAccountIdentity('a')).resolves.toEqual({
+      accountId: '999',
+      handle: 'alice',
+    });
+    expect(transport.sent[0].method).toBe('resolveAccountIdentity');
+    expect(transport.sent[0].accountId).toBe('a');
+
+    const failing = new ExtensionExecutor(
+      fakeTransport((job) => ({
+        id: job.id,
+        ok: false,
+        code: 'x_error',
+        error: 'X から弾かれました',
+        at: 13,
+      })),
+    );
+    await expect(failing.resolveAccountIdentity('a')).rejects.toThrow('X から弾かれました');
+
+    const empty = new ExtensionExecutor(
+      fakeTransport((job) => ({ id: job.id, ok: true, data: {}, at: 14 })),
+    );
+    await expect(empty.resolveAccountIdentity('a')).rejects.toThrow(
+      'ハンドルを確認できませんでした',
+    );
+  });
+
   it('searchBan は null（取得失敗）をそのまま通す', async () => {
     const transport = fakeTransport((job) => ({
       id: job.id,

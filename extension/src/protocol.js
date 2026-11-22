@@ -29,6 +29,7 @@ const XManagerProtocol = {
     'deletePost',
     'executeAction',
     'checkAccount',
+    'resolveAccountIdentity',
     'checkSearchBan',
     'fetchPostAnalytics',
     'fetchNotifications',

@@ -282,6 +282,7 @@ describe('extension/src/protocol.js との同期', () => {
       'deletePost',
       'executeAction',
       'checkAccount',
+      'resolveAccountIdentity',
       'checkSearchBan',
       'fetchPostAnalytics',
       'fetchNotifications',

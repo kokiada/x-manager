@@ -160,6 +160,13 @@ export interface Executor {
   /** Refresh status, notification/DM counts and follower count. */
   checkAccount(account: Account): Promise<AccountCheckResult>;
   /**
+   * Resolve the real handle for a linked extension session
+   * (verify_credentials). Used when importing a session that has no
+   * handle, so the ledger never gets a placeholder handle (linked-…).
+   * Extension mode only.
+   */
+  resolveAccountIdentity(accountId: string): Promise<{ accountId: string; handle: string }>;
+  /**
    * Check search visibility of `account`'s posts from the viewpoint of
    * `viaAccount` (must be logged in and not locked/frozen).
    */

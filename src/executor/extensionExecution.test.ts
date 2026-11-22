@@ -2381,4 +2381,28 @@ describe('ログイン中のアカウントの取り込み（sessionImport + bac
       'ログイン中のアカウントを確認できませんでした',
     );
   });
+
+  it('resolveAccountIdentity は verify_credentials の id とハンドルを返す', async () => {
+    const chromeStub = makeChromeStub();
+    const fetchStub = makeFetchStub([
+      verifyCredentialsRoute({ id_str: '999', screen_name: 'alice' }),
+    ]);
+    const sandbox = loadExtension(chromeStub, fetchStub);
+    const sessions = makeSessionsStub({
+      a: { authToken: 'token-a', handle: 'alice', ct0: 'ct0-a' },
+    });
+    const ctx = makeCtx({ sessions, chrome: chromeStub, fetch: fetchStub });
+    await expect(
+      sandbox.XManagerDispatch.handleJob(
+        {
+          id: 'r1',
+          method: 'resolveAccountIdentity',
+          accountId: 'a',
+          accountHandle: '',
+          payload: {},
+        },
+        ctx,
+      ),
+    ).resolves.toEqual({ accountId: '999', handle: 'alice' });
+  });
 });

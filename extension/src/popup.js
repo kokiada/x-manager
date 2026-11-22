@@ -74,10 +74,18 @@ document.getElementById('add').addEventListener('click', async () => {
     setStatus('アカウントIDを入力してください。');
     return;
   }
+  const handle = handleEl.value.trim();
+  if (!handle) {
+    // ハンドル無しで連携すると、アプリ側で仮ハンドル（linked-…）が
+    // 付いてチェックが必ず失敗する（2026-11-22 の 1-2）。ハンドルが
+    // 分からない場合は上の「今ログイン中のアカウントを取り込む」を使う。
+    setStatus('ハンドルを入力してください（@なし）。分からない場合は上の「今ログイン中のアカウントを取り込む」を使ってください。');
+    return;
+  }
   try {
     await XManagerSessions.set(accountId, {
       authToken,
-      handle: handleEl.value.trim(),
+      handle,
     });
     setStatus('連携しました。', true);
     tokenEl.value = '';

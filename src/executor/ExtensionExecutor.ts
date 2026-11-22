@@ -236,6 +236,26 @@ export class ExtensionExecutor implements Executor {
     return check;
   }
 
+  async resolveAccountIdentity(accountId: string): Promise<{ accountId: string; handle: string }> {
+    const result = await this.call(
+      'resolveAccountIdentity',
+      { id: accountId, handle: '' } as Account,
+      {},
+    );
+    if (!result.ok) {
+      throw new Error(this.errorOf(result));
+    }
+    const data = result.data ?? {};
+    const handle = typeof data.handle === 'string' ? data.handle : '';
+    if (!handle) {
+      throw new Error('ハンドルを確認できませんでした');
+    }
+    return {
+      accountId: typeof data.accountId === 'string' ? data.accountId : accountId,
+      handle,
+    };
+  }
+
   async checkSearchBan(account: Account, viaAccount: Account): Promise<SearchBanCheckResult> {
     const at = Date.now();
     const result = await this.call('checkSearchBan', account, {

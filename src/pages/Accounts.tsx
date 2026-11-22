@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../db/db';
 import type { Account, NewAccount } from '../db/types';
 import { createAccount, createAccountWithId, recordFollowerHistory, updateAccount } from '../db/repository';
-import { planSessionImport } from '../lib/sessionImport';
+import { isPlaceholderHandle, planSessionImport } from '../lib/sessionImport';
+import type { SessionAccountToCreate } from '../lib/sessionImport';
 import { executor } from '../executor';
 import { accountsToCsv } from '../lib/accountCsv';
 import { downloadTextFile } from '../lib/csv';
@@ -154,6 +155,9 @@ export function Accounts() {
    * アカウントが増えないため、このボタンが無いと「連携したのに一覧に
    * 出ない」ように見える。セッションのIDをそのまま台帳のIDにするので、
    * 取り込んだ直後から「連携済み」バッジが付く。
+   * ハンドルが無いセッションは拡張に本人確認して本物のハンドルで作る。
+   * 解決できなければ作らない（仮ハンドル linked-… は作らない）。
+   * 過去の取り込みで残った仮ハンドルも、同じ本人確認で直す。
    */
   const importLinkedSessions = async () => {
     if (linkedSessions === null) return;
@@ -163,7 +167,33 @@ export function Accounts() {
         linkedSessions,
         (accounts ?? []).map((a) => a.id),
       );
-      for (const item of plan.toCreate) {
+      const resolved: SessionAccountToCreate[] = [];
+      const skipped: string[] = [];
+      for (const accountId of plan.needsHandle) {
+        try {
+          const identity = await executor.resolveAccountIdentity(accountId);
+          resolved.push({ accountId: identity.accountId, handle: identity.handle });
+        } catch {
+          skipped.push(accountId);
+        }
+      }
+      let repaired = 0;
+      const linkedById = new Map(linkedSessions.map((s) => [s.accountId, s]));
+      for (const account of accounts ?? []) {
+        if (!isPlaceholderHandle(account.handle) || !linkedById.has(account.id)) continue;
+        try {
+          const identity = await executor.resolveAccountIdentity(account.id);
+          await updateAccount(account.id, {
+            handle: identity.handle,
+            displayName: identity.handle,
+          });
+          repaired += 1;
+        } catch {
+          // 直せなければ仮ハンドルのまま残す（チェック時の案内は従来通り）。
+        }
+      }
+      const created = [...plan.toCreate, ...resolved];
+      for (const item of created) {
         await createAccountWithId(item.accountId, {
           handle: item.handle,
           displayName: item.handle,
@@ -177,12 +207,14 @@ export function Accounts() {
           searchBan: 'unknown',
         });
       }
-      toast.push(
-        plan.toCreate.length > 0
-          ? `${plan.toCreate.length}件を取り込みました（${plan.alreadyLinked}件は連携済みでした）`
+      const notes = [
+        created.length > 0
+          ? `${created.length}件を取り込みました（${plan.alreadyLinked}件は連携済みでした）`
           : `取り込むアカウントはありませんでした（${plan.alreadyLinked}件は連携済みでした）`,
-        'ok',
-      );
+      ];
+      if (repaired > 0) notes.push(`${repaired}件の仮ハンドルを本物のハンドルに修正しました`);
+      if (skipped.length > 0) notes.push(`${skipped.length}件はハンドルを確認できず見送りました`);
+      toast.push(notes.join('。'), skipped.length > 0 ? 'err' : 'ok');
       await refreshLinked();
     } catch {
       toast.push('拡張の連携の取り込みに失敗しました', 'err');

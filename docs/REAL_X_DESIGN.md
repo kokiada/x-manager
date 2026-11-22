@@ -180,8 +180,10 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
    予備として手入力の登録も残してある（アカウントIDと auth_token を入力）
 3. アプリのアカウント画面で「拡張の連携を取り込む」を押す
    → 拡張の連携のうち台帳に無いものを、セッションのIDそのままで台帳へ追加する
-   （ハンドルが未入力のセッションは `linked-<IDの先頭8文字>` の仮ハンドルで作り、後で編集できる。
-   取り込みで連携したセッションは本物のハンドルが入っているので仮ハンドルにならない）
+   （ハンドルが無いセッションは、拡張の `resolveAccountIdentity`
+   （verify_credentials）で本物のハンドルを解決してから作る。解決でき
+   なければ作らない。仮ハンドルは作らない。過去の取り込みで残った
+   仮ハンドル `linked-…` も、取り込み時に同じ本人確認で直す）
 4. 一覧に「連携済み」バッジが付けば、実行方法「拡張」での操作が使える
 
 ## セキュリティモデル
@@ -209,6 +211,7 @@ query ID 走査の締切 15秒、ct0 取得 10秒、1ジョブの実行 28秒。
 | `deletePost` | DeleteTweet | 実装済み・未検証 |
 | `executeAction`（いいね／リポスト／ブックマーク／フォロー） | FavoriteTweet / CreateRetweet / CreateBookmark / friendships/create.json | 実装済み・未検証 |
 | `checkAccount` | UserByScreenName＋badge_count（取れなければ -1＝不明） | 実装済み・未検証 |
+| `resolveAccountIdentity` | verify_credentials（ハンドル無しの連携セッションの本人確認。取り込み時に本物のハンドルで作るため） | 実装済み・未検証 |
 | `checkSearchBan` | UserTweets＋SearchTimeline（Top / Latest） | 実装済み・未検証 |
 | `fetchPostAnalytics` | UserTweets（最大50件）＋計測値 | 実装済み・未検証 |
 | `fetchNotifications` | notifications/all.json＋DM inbox（形式が違えば not_implemented） | 実装済み・未検証 |

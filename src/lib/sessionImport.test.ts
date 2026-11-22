@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planSessionImport, placeholderHandle } from './sessionImport';
+import { isPlaceholderHandle, planSessionImport } from './sessionImport';
 
 describe('planSessionImport', () => {
   it('台帳に無いセッションだけ取り込み対象にする', () => {
@@ -12,39 +12,29 @@ describe('planSessionImport', () => {
     );
     expect(plan).toEqual({
       toCreate: [{ accountId: 'b', handle: 'bar' }],
+      needsHandle: [],
       alreadyLinked: 1,
     });
   });
 
-  it('すべて未連携なら全件作る', () => {
+  it('ハンドルが無いセッションは仮ハンドルで作らず needsHandle に回す', () => {
     const plan = planSessionImport(
       [
         { accountId: 'a', handle: 'foo' },
         { accountId: 'b', handle: null },
+        { accountId: 'c', handle: '   ' },
       ],
       [],
     );
-    expect(plan.toCreate).toEqual([
-      { accountId: 'a', handle: 'foo' },
-      { accountId: 'b', handle: 'linked-b' },
-    ]);
+    expect(plan.toCreate).toEqual([{ accountId: 'a', handle: 'foo' }]);
+    expect(plan.needsHandle).toEqual(['b', 'c']);
     expect(plan.alreadyLinked).toBe(0);
   });
 
-  it('ハンドルが無い・空のセッションは仮ハンドルで作る', () => {
-    const plan = planSessionImport(
-      [
-        { accountId: 'abc12345', handle: null },
-        { accountId: 'def67890', handle: '   ' },
-        { accountId: 'ghi11111', handle: '@withAt' },
-      ],
-      [],
-    );
-    expect(plan.toCreate).toEqual([
-      { accountId: 'abc12345', handle: 'linked-abc12345' },
-      { accountId: 'def67890', handle: 'linked-def67890' },
-      { accountId: 'ghi11111', handle: 'withAt' },
-    ]);
+  it('ハンドルの先頭の @ は取る', () => {
+    const plan = planSessionImport([{ accountId: 'ghi11111', handle: '@withAt' }], []);
+    expect(plan.toCreate).toEqual([{ accountId: 'ghi11111', handle: 'withAt' }]);
+    expect(plan.needsHandle).toEqual([]);
   });
 
   it('同一IDの重複セッションは最初の1件だけにする', () => {
@@ -56,6 +46,7 @@ describe('planSessionImport', () => {
       [],
     );
     expect(plan.toCreate).toEqual([{ accountId: 'a', handle: 'first' }]);
+    expect(plan.needsHandle).toEqual([]);
     expect(plan.alreadyLinked).toBe(0);
   });
 
@@ -71,13 +62,19 @@ describe('planSessionImport', () => {
   });
 
   it('セッションが無ければ何も作らない', () => {
-    expect(planSessionImport([], ['a'])).toEqual({ toCreate: [], alreadyLinked: 0 });
+    expect(planSessionImport([], ['a'])).toEqual({
+      toCreate: [],
+      needsHandle: [],
+      alreadyLinked: 0,
+    });
   });
 });
 
-describe('placeholderHandle', () => {
-  it('IDの先頭8文字を使う', () => {
-    expect(placeholderHandle('abc123456789')).toBe('linked-abc12345');
-    expect(placeholderHandle('short')).toBe('linked-short');
+describe('isPlaceholderHandle', () => {
+  it('linked- で始まる仮ハンドルを見分ける', () => {
+    expect(isPlaceholderHandle('linked-abc12345')).toBe(true);
+    expect(isPlaceholderHandle('linked-')).toBe(true);
+    expect(isPlaceholderHandle('korosukeada')).toBe(false);
+    expect(isPlaceholderHandle('linkeduser')).toBe(false);
   });
 });

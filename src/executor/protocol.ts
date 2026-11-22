@@ -53,6 +53,7 @@ export type ExtensionMethod =
   | 'deletePost'
   | 'executeAction'
   | 'checkAccount'
+  | 'resolveAccountIdentity'
   | 'checkSearchBan'
   | 'fetchPostAnalytics'
   | 'fetchNotifications';

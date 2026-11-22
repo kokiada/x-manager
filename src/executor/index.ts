@@ -76,6 +76,9 @@ class DelegatingExecutor implements Executor {
   checkAccount(account: Account): Promise<AccountCheckResult> {
     return activeExecutor().checkAccount(account);
   }
+  resolveAccountIdentity(accountId: string): Promise<{ accountId: string; handle: string }> {
+    return activeExecutor().resolveAccountIdentity(accountId);
+  }
   checkSearchBan(account: Account, viaAccount: Account): Promise<SearchBanCheckResult> {
     return activeExecutor().checkSearchBan(account, viaAccount);
   }

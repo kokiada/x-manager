@@ -53,6 +53,13 @@ const XManagerDispatch = {
         return withSession(job.accountId, (auth) => doAction(client, auth, job));
       case 'checkAccount':
         return withSession(job.accountId, (auth) => doCheckAccount(client, auth, job));
+      case 'resolveAccountIdentity':
+        // ハンドル無しの連携セッションの本人確認。verify_credentials で
+        // 数値IDと本物のハンドルを返す。アプリ側は取り込み時に仮ハンドル
+        // （linked-…）を作らず、ここで解決した本物のハンドルで作る。
+        return withSession(job.accountId, (auth) =>
+          client.getCurrentUser(auth).then((u) => ({ accountId: u.id, handle: u.handle })),
+        );
       case 'checkSearchBan':
         return doCheckSearchBan(client, withSession, job);
       case 'fetchPostAnalytics':

@@ -57,3 +57,14 @@
 - 3-1 失敗後に一括投稿の「予約・履歴」タブを開くと画面全体が真っ黒になり操作不能になる現象が2回再現。描画例外時に ErrorBoundary が無く React 全体が落ちていたのが原因とみられる（静的解析では特定の throw は断定できず）。対策：`src/components/ErrorBoundary.tsx` を追加し `main.tsx` でアプリ全体を囲む（例外時はメッセージと再読み込みボタンを表示）。ついでに `JobHistory.tsx` の `segments[0].slice` と `job.entries` を空安全にした。
 - 検証：テスト357件全パス（新規422テスト含む）、tsc OK、lint エラー0、build 通過、拡張 JS は `node --check` 通過。
 - 再テスト待ち：3-1 の再実行と履歴タブの確認は、Koki 側で `git pull` → `npm run build` → アプリ再起動＋拡張の再読み込み後にブラウザで実施する。
+
+## 1-2 の仮ハンドル（linked-…）の解消（2026-11-22）
+- 原因：拡張のポップアップの手入力フォームはハンドルが任意で、空のまま連携するとセッションにハンドルが入らない。アプリの取り込みはハンドル無しのセッションに `linked-<IDの先頭8文字>` の仮ハンドルを付けて台帳へ作っていた。そのハンドルはX上に存在しないため、チェックは必ず「見つかりません」になっていた（チェック側に仮ハンドル専用の案内文言まであった）。
+- 修正：
+  - 拡張に `resolveAccountIdentity` ジョブを追加（dispatch.js／protocol.js の METHODS／`src/executor/protocol.ts` の ExtensionMethod／Executor インタフェース／ExtensionExecutor／SimulatorExecutor／DelegatingExecutor）。verify_credentials で数値IDと本物のハンドルを返す。
+  - `src/lib/sessionImport.ts`：仮ハンドルを作るのをやめた。ハンドル無しのセッションは `needsHandle` に回し、呼び出し側が本人確認して本物のハンドルで作る。解決できなければ作らない。`placeholderHandle` は削除し、仮ハンドル判定の `isPlaceholderHandle` を追加。
+  - `src/pages/Accounts.tsx` の取り込み：ハンドル無しのセッションは本人確認してから作る。過去の取り込みで残った仮ハンドル（linked-…）も、連携セッションと突き合わせて本人確認で直す。直せないものは作らず、件数をトーストで知らせる。
+  - 拡張ポップアップ：手入力フォームのハンドルを必須にした（空なら保存せず、「今ログイン中のアカウントを取り込む」を案内する）。
+  - `docs/REAL_X_DESIGN.md` の取り込み手順と Executor メソッド表を更新。
+- 検証：テスト359件全パス（resolveAccountIdentity の dispatch・Executor テスト含む）、tsc OK、lint エラー0、build 通過、拡張 JS は `node --check` 通過。
+- 再テスト待ち：Koki 側で `git pull` → `npm run build` → アプリ再起動＋拡張の再読み込み後、「拡張の連携を取り込む」で仮ハンドルが本物のハンドル（@korosukeada）に直ることを確認する。1-2 は NG のまま記録する。
