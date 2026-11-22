@@ -69,8 +69,9 @@ describe('refreshNotifications', () => {
     expect(added).toBe(2);
     const rows = await db.notifications.toArray();
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ accountId: 'a', handle: 'alice', kind: 'notification' });
-    expect(rows[1]).toMatchObject({ accountId: 'a', handle: 'alice', kind: 'dm' });
+    // toArray の並びは主キー（ランダムID）順なので kind で探す。
+    expect(rows.find((r) => r.kind === 'notification')).toMatchObject({ accountId: 'a', handle: 'alice' });
+    expect(rows.find((r) => r.kind === 'dm')).toMatchObject({ accountId: 'a', handle: 'alice' });
   });
 
   it('同じ取得結果の2回目は重複として0件になる', async () => {

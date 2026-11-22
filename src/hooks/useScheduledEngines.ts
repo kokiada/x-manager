@@ -1,14 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { executor } from '../executor';
-import {
-  getMeta,
-  getSettings,
-  listAccounts,
-  localDateString,
-  recordFollowerHistory,
-  setMeta,
-} from '../db/repository';
-import { runBanCheckBatch } from '../lib/banCheckService';
+import { runScheduledAccountCheck, runScheduledBanCheck } from '../lib/scheduledChecks';
 import { tickAutoPost } from '../lib/autoPostEngine';
 import { runAutoActionCycle } from '../lib/autoActionEngine';
 
@@ -30,71 +21,6 @@ import { runAutoActionCycle } from '../lib/autoActionEngine';
  * All ticks are best-effort, guarded against overlap, and silent on
  * success. Nothing fires while the app is closed.
  */
-
-const LATE_MS = 15 * 60_000;
-
-function timeTodayMs(time: string, now: number): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(time);
-  if (!match) return null;
-  const d = new Date(now);
-  d.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  return d.getTime();
-}
-
-async function runScheduledAccountCheck(now: number): Promise<void> {
-  const settings = await getSettings();
-  const schedule = settings.accountCheck;
-  if (!schedule.enabled) return;
-  const scheduledAt = timeTodayMs(schedule.time, now);
-  if (scheduledAt === null) return;
-  if (now < scheduledAt || now - scheduledAt > LATE_MS) return;
-  const dateKey = localDateString(now);
-  const metaKey = `sched:accountCheck:${dateKey}`;
-  if (await getMeta<boolean>(metaKey, false)) return;
-  await setMeta(metaKey, true); // claim the day before running
-
-  const accounts = await listAccounts();
-  const targets = schedule.groupId
-    ? accounts.filter((a) => a.groupId === schedule.groupId)
-    : accounts;
-  for (const account of targets) {
-    try {
-      const result = await executor.checkAccount(account);
-      await recordFollowerHistory(account.id, result.followers, dateKey);
-    } catch {
-      /* one account failing must not stop the rest */
-    }
-  }
-}
-
-async function runScheduledBanCheck(now: number): Promise<void> {
-  const settings = await getSettings();
-  const schedule = settings.searchBanCheck;
-  if (!schedule.enabled) return;
-  const scheduledAt = timeTodayMs(schedule.time, now);
-  if (scheduledAt === null) return;
-  if (now < scheduledAt || now - scheduledAt > LATE_MS) return;
-  const dateKey = localDateString(now);
-  const metaKey = `sched:searchBanCheck:${dateKey}`;
-  if (await getMeta<boolean>(metaKey, false)) return;
-  await setMeta(metaKey, true);
-
-  const accounts = await listAccounts();
-  const targets = (schedule.groupId
-    ? accounts.filter((a) => a.groupId === schedule.groupId)
-    : accounts
-  ).map((a) => a.id);
-  const checkers = accounts
-    .filter((a) => a.status === 'logged_in')
-    .slice(0, 3)
-    .map((a) => a.id);
-  if (targets.length === 0 || checkers.length === 0) return;
-  try {
-    await runBanCheckBatch({ checkerIds: checkers, targetIds: targets });
-  } catch {
-    /* best-effort: tomorrow's run retries */
-  }
-}
 
 export function useScheduledEngines(): void {
   const busy = useRef(false);

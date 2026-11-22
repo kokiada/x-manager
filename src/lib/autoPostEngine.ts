@@ -92,7 +92,13 @@ export async function tickAutoPost(now = Date.now()): Promise<void> {
 
   for (const rule of rules) {
     const shape: AutoPostRuleShape = rule;
-    const fired = await getFiredSlotKeys(rule.id, todayKey);
+    // 発火済みキーは今日＋昨日を見る。昨日のスロットは今日のキー
+    // だけでは拾えず、処理済みの遅刻スロットを毎日スキップ記録
+    // として重ねてしまうため（スロットキー自体に日付が入っている
+    // ので、今日のキーへの保存はそのままでよい）。
+    const firedToday = await getFiredSlotKeys(rule.id, todayKey);
+    const firedYesterday = await getFiredSlotKeys(rule.id, localDateString(yesterday.getTime()));
+    const fired = [...new Set([...firedToday, ...firedYesterday])];
     const firedSet = new Set(fired);
     // Today + yesterday (overnight random windows spill past midnight).
     // Slots are computed with a rng seeded per rule + day, so the
