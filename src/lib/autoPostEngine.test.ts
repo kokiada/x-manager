@@ -89,7 +89,8 @@ async function seedRule(
   templateId: string,
   patch: Partial<AutoPostRule> = {},
 ): Promise<AutoPostRule> {
-  return createAutoPostRule({
+  const { createdAt, ...rest } = patch;
+  const rule = await createAutoPostRule({
     name: '朝の投稿',
     enabled: true,
     accountIds,
@@ -97,8 +98,14 @@ async function seedRule(
     mode: 'fixed_times',
     times: ['10:00'],
     jitterMin: 0,
-    ...patch,
+    ...rest,
   });
+  // 既定ではルールは2日前から存在していたことにする。昨日の
+  // 遅刻スロットが正当に「見逃し」になる前提を保つため。
+  // createdAt を渡すとその時刻で上書きする。
+  const at = createdAt ?? Date.now() - 2 * 24 * 3600_000;
+  await db.autoPostRules.update(rule.id, { createdAt: at });
+  return { ...rule, createdAt: at };
 }
 
 async function seedTemplate(body = 'hello'): Promise<Template> {
@@ -172,6 +179,28 @@ describe('tickAutoPost', () => {
     expect(runs).toHaveLength(2);
     expect(runs.every((r) => r.status === 'skipped' && r.accountId === a.id)).toBe(true);
     expect(runs.every((r) => r.reason?.includes('15分以上過ぎた'))).toBe(true);
+    // 理由には日付が入る。昨日の分が今日のスロットに見えてはいけない。
+    expect(runs.every((r) => /予定時刻（\d+\/\d+ \d{2}:\d{2}）/.test(r.reason ?? ''))).toBe(true);
+  });
+
+  it('作ったばかりのルールは昨日のスロットを遡ってスキップしない', async () => {
+    const a = await createAccount(realAccount('alice'));
+    const template = await seedTemplate();
+    // 11:31 に作ったルール。今日 11:34 のスロットはまだ未来。
+    await seedRule([a.id], template.id, { times: ['11:34'], createdAt: atToday(11, 31) });
+
+    await tickAutoPost(atToday(11, 31));
+
+    expect(mockCreateAndRunJob).not.toHaveBeenCalled();
+    // 昨日の 11:34 を「15分以上過ぎた」と遡って記録してはいけない。
+    expect(await listAutoPostRuns()).toHaveLength(0);
+
+    // 11:34 になれば今日のスロットが発火する。
+    mockCreateAndRunJob.mockResolvedValue(
+      fakeJob([{ accountId: a.id, status: 'done', postUrl: 'https://x.com/alice/status/1' }]),
+    );
+    await tickAutoPost(atToday(11, 34));
+    expect(mockCreateAndRunJob).toHaveBeenCalledTimes(1);
   });
 
   it('テンプレートが空ならスキップ記録だけ残す', async () => {

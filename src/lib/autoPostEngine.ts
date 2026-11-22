@@ -75,6 +75,12 @@ function payloadFromTemplate(rule: AutoPostRule, template: NonNullable<Awaited<R
   };
 }
 
+/** 'M/D HH:MM' — a skipped slot from yesterday must not read as today's. */
+function slotDateLabel(slot: AutoPostSlot): string {
+  const d = new Date(slot.dueAt);
+  return `${d.getMonth() + 1}/${d.getDate()} ${slot.label}`;
+}
+
 /**
  * One engine tick: evaluate every enabled rule and fire due slots.
  * Returns the run rows recorded immediately (late skips and
@@ -109,8 +115,12 @@ export async function tickAutoPost(now = Date.now()): Promise<void> {
     for (const day of [yesterday, today]) {
       const rng = seededRandom(`${rule.id}:${localDateString(day.getTime())}`);
       const split = dueSlots(shape, day, now, fired, rng);
-      due.push(...split.due);
-      skippedLate.push(...split.skippedLate);
+      // Slots scheduled before the rule was created were never its
+      // responsibility: a rule made at 11:31 must not retro-skip
+      // yesterday's 11:34 slot (nor fire a slot it just missed).
+      const existed = (s: AutoPostSlot) => s.dueAt >= rule.createdAt;
+      due.push(...split.due.filter(existed));
+      skippedLate.push(...split.skippedLate.filter(existed));
     }
 
     for (const slot of skippedLate) {
@@ -121,7 +131,7 @@ export async function tickAutoPost(now = Date.now()): Promise<void> {
         accountId: rule.accountIds[0] ?? '',
         templateId: rule.templateId,
         status: 'skipped',
-        reason: `予定時刻（${slot.label}）を15分以上過ぎたためスキップ`,
+        reason: `予定時刻（${slotDateLabel(slot)}）を15分以上過ぎたためスキップ`,
         at: now,
       });
       await markFired(rule.id, todayKey, slot.key);
