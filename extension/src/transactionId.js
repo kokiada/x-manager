@@ -54,25 +54,28 @@ const XManagerTransactionId = {
       let timer = null;
       try {
         const timeout = new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error('fetch timed out')),
-            timeoutMs,
-          );
+          timer = setTimeout(() => {
+            // 中断は締切のときだけ。成功後に abort すると、呼び出し側が
+            // これから読む応答ボディまで中断されてしまい、実ブラウザで
+            // 「signal is aborted without reason」になる（2026-11-22 の
+            // 生成テストで発覚。スタブ応答は signal を見ないため
+            // テストでは再現しなかった）。
+            if (controller) {
+              try {
+                controller.abort();
+              } catch {
+                // 無視する。
+              }
+            }
+            reject(new Error('fetch timed out'));
+          }, timeoutMs);
         });
-        const res = await Promise.race([
+        return await Promise.race([
           fetchImpl(url, { ...(options || {}), signal: controller ? controller.signal : undefined }),
           timeout,
         ]);
-        return res;
       } finally {
         if (timer !== null) clearTimeout(timer);
-        if (controller) {
-          try {
-            controller.abort();
-          } catch {
-            // 既に完了している場合など。無視する。
-          }
-        }
       }
     }
 

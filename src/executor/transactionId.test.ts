@@ -193,6 +193,35 @@ describe('transactionId.js（x-client-transaction-id 生成器）', () => {
     await expect(gen('POST', 'not a url')).resolves.toBeNull();
   });
 
+  it('応答ボディを読む前に signal を中断しない（実ブラウザでの生成失敗の回帰）', async () => {
+    // 実ブラウザの fetch は、応答が返った後でも body を読み切る前に
+    // signal を中断すると text() が「signal is aborted without reason」
+    // で失敗する。旧実装は成功後も finally で abort していたため、
+    // 実ブラウザでは常に生成が失敗していた（スタブ応答は signal を
+    // 見ないので従来のテストでは再現しなかった）。
+    const abortSensitive = (body: string, signal: any) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => {
+        if (signal && signal.aborted) {
+          throw new Error('signal is aborted without reason');
+        }
+        return body;
+      },
+    });
+    const fetchStub = async (url: string, opts: any = {}) => {
+      if (url === 'https://x.com/i/jf/') return abortSensitive(homepageHtml(), opts.signal);
+      if (url === ONDEMAND_URL) return abortSensitive(ONDEMAND_SOURCE, opts.signal);
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    const sandbox = loadModule(fetchStub);
+    const gen = sandbox.XManagerTransactionId.createGenerator({ fetchImpl: fetchStub });
+    const id = await gen('POST', 'https://x.com/i/api/graphql/QID/CreateTweet');
+    expect(typeof id).toBe('string');
+    await expect(gen.probe()).resolves.toEqual({ ok: true });
+  });
+
   it('probe は生成できる環境では ok:true を返し、鍵をキャッシュする', async () => {
     const fetchStub = makeFetchStub();
     const sandbox = loadModule(fetchStub);
