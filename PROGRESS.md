@@ -187,3 +187,11 @@ Phase 1 以降のタスク分解は Phase 0（D-02〜D-05）完了後に行う�
 ## 運用変更（2026-11-22 22:33、こうきくん指示）
 
 - 実 PC が必要になる作業はスキップしてよい。D-03 以降の完了判定は、実装＋テスト＋各環境で可能な検証までを対象とし、PC 側でしかできない実通信の確認は「スキップ（保留）」として記録する。保留分は後日まとめて確認する。
+
+## D-03 進捗（2026-11-23、ボブ）
+
+実装＋テスト＋この環境でできる検証まで完了。実通信確認は保留（下記）。
+
+- 成果物：`electron/src/session.cjs`（`buildProxyRules` / `applyProxy` / `setSessionCookies` / `getSessionStatus` / `verifySession` / `configureSession`）。プロキシは `session.setProxy()`、認証は `session.cookies` に `auth_token` / `ct0` を設定する（DESKTOP_DESIGN.md §3）。Cookie の値は返り値・ログに含めない（§6）。`electron/src/host.cjs` に `--proxy` / `--verify-session` を追加し、ウィンドウ読み込み前に partition の session を設定する。未指定なら D-02 どおり何も設定しない。
+- 検証：テスト413件全パス（うち D-03 新規23件：session 18件・host 5件）。tsc OK、lint エラー0（警告3は既存）、build 通過、node --check 通過。実 Electron でも xvfb-run 経由で確認：`--verify-session --proxy http://127.0.0.1:8080` で `{"ok":true,"proxy":"PROXY 127.0.0.1:8080","hasAuthToken":false,"hasCt0":false}`、ダミー Cookie 設定後の再確認で `hasAuthToken:true / hasCt0:true`、値の漏れなし。
+- 未完了：設定したプロキシ経由の x.com への実通信と、設定した Cookie でのセッション確認。この VM からは x.com への通信が egress プロキシで遮断されるため実施できない。2026-11-22 22:34 のこうきくんの指示（実PCが必要な作業はスキップ可）と 22:35 のゆいの指示（実通信確認は保留し、実装＋テスト＋この環境でできる検証までで進める）により、実通信確認は後日まとめて行う。チェックボックスはその確認が済むまで未完了のまま。
