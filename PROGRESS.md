@@ -143,7 +143,7 @@
 - [x] D-01 実行層の棚卸し（ガッツ）— 完了（458d7b1、docs/DESKTOP_REUSE_MAP.md：extension/src・src/executor・src/lib をファイル単位で切り分け。ゆいが裏取り確認済み）。作り直しはセッション管理系と errorMessage・extensionLink・extensionPrecheck 等。要確認：src/lib/emailLedger はテストだけがあり実装ファイルが無い（Phase 1 で扱いを決める）。— 流用マップをファイル単位で「流用／作り直し」に切り分け、docs に記録する。完了条件：棚卸し表が repo に入り、内容が実ファイルと一致していることを確認できること。
 - [x] D-02 Electron 最小ホスト（ボブ）— partition 1つで x.com を開ける最小ホストを立てる。完了条件：手元環境で x.com の表示を確認し、ホストの自動テストが100%通ること。→ 2026-11-22 19:18 完了。こうきくんが PC で `npm run desktop` を実行し、x.com の表示を確認（HEAD f675758）。 ゆいの独立検証：テスト390件全パスを再実行で確認。smoke でホスト起動・partition ウィンドウ生成・x.com への遷移試行を確認（ゆいの VM では中間プロキシ証明書による ERR_CERT_AUTHORITY_INVALID のみが壁で、ホストの不具合ではない）。
 - [x] D-03 プロキシ＋Cookie の検証（ボブ）— 完了（a9e4bba）。partition への setProxy と cookies（auth_token/ct0）設定、--proxy / --verify-session を追加。ゆいの独立検証：テスト413件全パスを再実行で確認、実 Electron で --verify-session の動作（プロキシ解決・Cookie 有無のみで値を出さない）を確認。実通信の確認は 2026-11-22 の指示によりスキップ（保留）— partition へ setProxy と cookies 設定ができることを確かめる。完了条件：設定したプロキシ経由の通信と、設定した Cookie でのセッションが確認でき、テスト100%。
-- [ ] D-04 読み取り実行の検証（ボブ）— ページ文脈 fetch でアカウントチェック相当の読み取りが通ること。完了条件：実データ相当の応答取得を確認し、テスト100%。
+- [x] D-04 読み取り実行の検証（ボブ）— ページ文脈 fetch でアカウントチェック相当の読み取りが通ること。完了条件：実データ相当の応答取得を確認し、テスト100%。 完了（5cc35d9）。ページ文脈 fetch で verify_credentials を実行し {id, handle} のみ返す readCheck.cjs と --read-check を追加。ゆいの独立検証：テスト440件全パスを再実行で確認、実 Electron で --read-check の実行とエラー分類（この VM では証明書エラー）を確認。実セッションでの成功確認は 2026-11-22 の指示によりスキップ（保留）。
 - [ ] D-05 投稿実行の検証（ボブ）— ページ文脈 fetch で投稿が通ること。x-client-transaction-id の扱い（生成器流用か DOM 実装か）を確定する。完了条件：投稿の成功確認と、テスト100%。
 - [ ] D-06 ブリッジ＋DesktopExecutor 骨組み（ゆい）— D-05 の結果を受けて着手。ホスト⇔アプリのブリッジ仕様を protocol の desktop 版として定義し、アプリ側 DesktopExecutor の骨組みを作る。完了条件：テスト100%。
 
