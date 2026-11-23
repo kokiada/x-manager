@@ -33,6 +33,7 @@ describe('parseArgs', () => {
       smoke: false,
       proxy: null,
       verifySession: false,
+      readCheck: false,
     });
   });
 
@@ -43,6 +44,7 @@ describe('parseArgs', () => {
       smoke: true,
       proxy: null,
       verifySession: false,
+      readCheck: false,
     });
   });
 
@@ -53,6 +55,18 @@ describe('parseArgs', () => {
       smoke: false,
       proxy: { scheme: 'http', host: 'proxy.example.com', port: 8080 },
       verifySession: true,
+      readCheck: false,
+    });
+  });
+
+  it('--read-check を読む', () => {
+    expect(parseArgs(['--read-check'])).toEqual({
+      accountId: 'smoke',
+      url: X_URL,
+      smoke: false,
+      proxy: null,
+      verifySession: false,
+      readCheck: true,
     });
   });
 
@@ -63,6 +77,7 @@ describe('parseArgs', () => {
       smoke: false,
       proxy: null,
       verifySession: false,
+      readCheck: false,
     });
   });
 

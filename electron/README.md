@@ -1,4 +1,4 @@
-# Electron 最小ホスト（D-02・D-03）
+# Electron 最小ホスト（D-02・D-03・D-04）
 
 デスクトップ方式の最小ホスト。partition 1つで x.com を開くだけの構成。
 設計は `docs/DESKTOP_DESIGN.md` §2–3。
@@ -10,6 +10,9 @@
 - `src/host.cjs` — ウィンドウ生成・引数解析・スモーク実行。
 - `src/session.cjs` — partition のプロキシ設定（setProxy）と Cookie 設定
   （auth_token / ct0）・検証。Cookie の値は返り値に含めない。
+- `src/readCheck.cjs` — ページ文脈 fetch によるアカウントチェック相当の
+  読み取り（`account/verify_credentials.json`）。`{ id, handle }` だけを
+  返す。トークンの値は返り値に含めない。
 
 ## 使い方
 
@@ -21,13 +24,21 @@ npm run desktop -- --smoke --url https://example.com/
 npm run desktop -- --proxy http://proxy.example.com:8080   # プロキシ経由で開く
 npm run desktop -- --verify-session --account korosukeada  # ウィンドウを開かず
           # partition のプロキシ解決と Cookie 有無だけ確認する（JSON を出す）
+npm run desktop -- --read-check --account korosukeada      # ページ文脈 fetch で
+          # verify_credentials を呼び、{ id, handle } だけ確認する（JSON を出す）
+          # --proxy も併用できる
 ```
 
 `--smoke` は終了コード 0（表示OK）/ 1（失敗）で終わり、スクリーンショットを
 `electron/smoke.png` に保存する。`--url` は https のみ指定できる（表示確認用）。
 `--proxy` は `http://` / `https://` / `socks5://` の host:port を指定する
 （`user:pass@host:port` の形で認証情報も渡せる）。`--verify-session` は
-終了コード 0（確認OK）/ 1（失敗）で終わる。
+終了コード 0（確認OK）/ 1（失敗）で終わる。`--read-check` はページ文脈で
+verify_credentials を fetch し、成功時は `{"ok":true,"id":"...","handle":"..."}`
+を、失敗時は `{"ok":false,"error":"..."}` を JSON で出す。終了コードは
+`--verify-session` と同じ 0/1 のつもりだが、実機では `process.exitCode` が
+`app.quit()` に伝わらず常に 0 で終わる既知の問題がある（D-02 の `--smoke`
+も同じ。JSON の `ok` で判定すること）。
 
 ## テスト
 
@@ -38,6 +49,10 @@ npx vitest run electron/src/
 electron モジュールは引数で受けるため、テストでは偽物に差し替えて検証する。
 実機の表示確認は `--smoke` で行う。実機のプロキシ・Cookie 確認は
 `--verify-session` で行う（xvfb-run が要る環境では `xvfb-run -a` を付ける）。
+実機の読み取り確認は `--read-check` で行う（同じく `xvfb-run -a` を付ける）。
+この VM では x.com に到達できないため `--read-check` は通信失敗になる。
+成功パスの実機確認は、ページの fetch をスタブしたスクラッチ実行で行う
+（`electron/src/readCheck.test.ts` のスタブ fetch テストと同じ応答形）。
 
 ## 注意
 

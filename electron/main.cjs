@@ -5,8 +5,14 @@
  *   npm run desktop                 # x.com を開く
  *   npm run desktop -- --smoke       # 読み込み確認して終了（結果を JSON で出す）
  *   npm run desktop -- --smoke --url https://example.com/
+ *   npm run desktop -- --read-check  # ページ文脈 fetch でアカウントチェック
+ *                                     # 相当の読み取りを実行（結果を JSON で出す）
  *
  * --smoke は終了コード 0（表示OK）/ 1（失敗）で終わる。
+ * --read-check は終了コード 0（読み取りOK）/ 1（失敗）で終わるつもり
+ * だが、実機では process.exitCode が app.quit() に伝わらず常に 0 で
+ * 終わる既知の問題がある（--smoke / --verify-session も同じ）。
+ * 成否は JSON の ok で判定すること。
  * スクリーンショットは electron/smoke.png に保存する。
  */
 'use strict';
@@ -16,11 +22,26 @@ const { app, BrowserWindow, session } = require('electron');
 const { partitionName } = require('./src/partition.cjs');
 const { createHostWindow, parseArgs, runSmoke } = require('./src/host.cjs');
 const { verifySession } = require('./src/session.cjs');
+const { runReadCheckForAccount } = require('./src/readCheck.cjs');
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   await app.whenReady();
   const electron = { BrowserWindow, session };
+  if (args.readCheck) {
+    // ウィンドウを開いてページ文脈で verify_credentials を fetch し、
+    // { id, handle } だけ確認する。トークンの値は出さない。
+    // --proxy / --account で partition とプロキシを指定できる。
+    const result = await runReadCheckForAccount(electron, {
+      accountId: args.accountId,
+      url: args.url,
+      proxy: args.proxy ?? undefined,
+    });
+    console.log(JSON.stringify(result));
+    process.exitCode = result.ok ? 0 : 1;
+    app.quit();
+    return;
+  }
   if (args.verifySession) {
     // ウィンドウを開かず、partition のプロキシ解決と Cookie 有無だけ確認する。
     // Cookie の値は出さない。--proxy を渡すとそのプロキシを適用して確認する。

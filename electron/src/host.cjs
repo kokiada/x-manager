@@ -49,6 +49,7 @@ function parseArgs(argv) {
   let smoke = false;
   let proxy = null;
   let verifySession = false;
+  let readCheck = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--account') {
@@ -70,6 +71,8 @@ function parseArgs(argv) {
       smoke = true;
     } else if (arg === '--verify-session') {
       verifySession = true;
+    } else if (arg === '--read-check') {
+      readCheck = true;
     } else {
       throw new Error(`未知のフラグです：${arg}`);
     }
@@ -85,7 +88,7 @@ function parseArgs(argv) {
   }
   // アカウントIDの検証は partitionName に任せるが、ここでも早めに弾く。
   partitionName(accountId);
-  return { accountId, url, smoke, proxy, verifySession };
+  return { accountId, url, smoke, proxy, verifySession, readCheck };
 }
 
 /**
