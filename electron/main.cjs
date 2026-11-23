@@ -7,6 +7,8 @@
  *   npm run desktop -- --smoke --url https://example.com/
  *   npm run desktop -- --read-check  # ページ文脈 fetch でアカウントチェック
  *                                     # 相当の読み取りを実行（結果を JSON で出す）
+ *   npm run desktop -- --post-check --text "hello"  # ページ文脈 fetch で投稿を実行
+ *                                     # （結果を JSON で出す。実際に投稿するので注意）
  *
  * --smoke は終了コード 0（表示OK）/ 1（失敗）で終わる。
  * --read-check は終了コード 0（読み取りOK）/ 1（失敗）で終わるつもり
@@ -23,11 +25,28 @@ const { partitionName } = require('./src/partition.cjs');
 const { createHostWindow, parseArgs, runSmoke } = require('./src/host.cjs');
 const { verifySession } = require('./src/session.cjs');
 const { runReadCheckForAccount } = require('./src/readCheck.cjs');
+const { runPostTweetForAccount } = require('./src/postTweet.cjs');
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   await app.whenReady();
   const electron = { BrowserWindow, session };
+  if (args.postCheck) {
+    // ウィンドウを開いてページ文脈で CreateTweet を fetch し、
+    // { postId, postUrl } だけ確認する。実際に投稿するため、
+    // --text を付けたときだけ実行する。トークンの値は出さない。
+    // --proxy / --account で partition とプロキシを指定できる。
+    const result = await runPostTweetForAccount(electron, {
+      accountId: args.accountId,
+      url: args.url,
+      proxy: args.proxy ?? undefined,
+      text: args.postText,
+    });
+    console.log(JSON.stringify(result));
+    process.exitCode = result.ok ? 0 : 1;
+    app.quit();
+    return;
+  }
   if (args.readCheck) {
     // ウィンドウを開いてページ文脈で verify_credentials を fetch し、
     // { id, handle } だけ確認する。トークンの値は出さない。

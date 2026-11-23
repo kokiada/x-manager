@@ -34,6 +34,8 @@ describe('parseArgs', () => {
       proxy: null,
       verifySession: false,
       readCheck: false,
+      postCheck: false,
+      postText: null,
     });
   });
 
@@ -45,6 +47,8 @@ describe('parseArgs', () => {
       proxy: null,
       verifySession: false,
       readCheck: false,
+      postCheck: false,
+      postText: null,
     });
   });
 
@@ -56,6 +60,8 @@ describe('parseArgs', () => {
       proxy: { scheme: 'http', host: 'proxy.example.com', port: 8080 },
       verifySession: true,
       readCheck: false,
+      postCheck: false,
+      postText: null,
     });
   });
 
@@ -67,7 +73,27 @@ describe('parseArgs', () => {
       proxy: null,
       verifySession: false,
       readCheck: true,
+      postCheck: false,
+      postText: null,
     });
+  });
+
+  it('--post-check と --text を読む', () => {
+    expect(parseArgs(['--post-check', '--text', 'hello'])).toEqual({
+      accountId: 'smoke',
+      url: X_URL,
+      smoke: false,
+      proxy: null,
+      verifySession: false,
+      readCheck: false,
+      postCheck: true,
+      postText: 'hello',
+    });
+  });
+
+  it('--post-check に --text が無ければ受け付けない', () => {
+    expect(() => parseArgs(['--post-check'])).toThrow(/--text/);
+    expect(() => parseArgs(['--text'])).toThrow(/--text/);
   });
 
   it('https なら x.com 以外も --url で指定できる（表示確認用）', () => {
@@ -78,6 +104,8 @@ describe('parseArgs', () => {
       proxy: null,
       verifySession: false,
       readCheck: false,
+      postCheck: false,
+      postText: null,
     });
   });
 

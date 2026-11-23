@@ -1,4 +1,4 @@
-# Electron 最小ホスト（D-02・D-03・D-04）
+# Electron 最小ホスト（D-02・D-03・D-04・D-05）
 
 デスクトップ方式の最小ホスト。partition 1つで x.com を開くだけの構成。
 設計は `docs/DESKTOP_DESIGN.md` §2–3。
@@ -13,6 +13,12 @@
 - `src/readCheck.cjs` — ページ文脈 fetch によるアカウントチェック相当の
   読み取り（`account/verify_credentials.json`）。`{ id, handle }` だけを
   返す。トークンの値は返り値に含めない。
+- `src/postTweet.cjs` — ページ文脈 fetch による投稿（GraphQL
+  `CreateTweet`）。`{ postId, postUrl }` だけを返す。トークンの値は
+  返り値に含めない。`x-client-transaction-id` は生成器
+  （`extension/src/transactionId.js`）を流用してページ文脈で作る
+  （DOM 実装には戻さない。D-05 の確定事項）。生成に失敗したら
+  ヘッダ無しで送る。
 
 ## 使い方
 
@@ -27,6 +33,8 @@ npm run desktop -- --verify-session --account korosukeada  # ウィンドウを�
 npm run desktop -- --read-check --account korosukeada      # ページ文脈 fetch で
           # verify_credentials を呼び、{ id, handle } だけ確認する（JSON を出す）
           # --proxy も併用できる
+npm run desktop -- --post-check --text "hello" --account korosukeada
+          # ページ文脈 fetch で実際に投稿する（JSON を出す）。--text は必須
 ```
 
 `--smoke` は終了コード 0（表示OK）/ 1（失敗）で終わり、スクリーンショットを
@@ -53,6 +61,12 @@ electron モジュールは引数で受けるため、テストでは偽物に�
 この VM では x.com に到達できないため `--read-check` は通信失敗になる。
 成功パスの実機確認は、ページの fetch をスタブしたスクラッチ実行で行う
 （`electron/src/readCheck.test.ts` のスタブ fetch テストと同じ応答形）。
+実機の投稿確認は `--post-check --text "..."` で行う（同じく `xvfb-run -a`
+を付ける）。実際に投稿するため、テスト用の文言で1回だけ行うこと。
+この VM では x.com に到達できないため `--post-check` は通信失敗になる。
+成功パスの確認は `electron/src/postTweet.test.ts` のスタブ fetch テスト
+と同じ応答形で行う。実投稿の確認は PC 側で後日まとめて行う
+（D-05 の実投稿確認は保留中）。
 
 ## 注意
 

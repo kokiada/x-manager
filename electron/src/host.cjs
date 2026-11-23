@@ -50,6 +50,8 @@ function parseArgs(argv) {
   let proxy = null;
   let verifySession = false;
   let readCheck = false;
+  let postCheck = false;
+  let postText = null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--account') {
@@ -73,9 +75,19 @@ function parseArgs(argv) {
       verifySession = true;
     } else if (arg === '--read-check') {
       readCheck = true;
+    } else if (arg === '--post-check') {
+      postCheck = true;
+    } else if (arg === '--text') {
+      const value = argv[i + 1];
+      if (value === undefined) throw new Error('--text の値がありません。');
+      postText = value;
+      i += 1;
     } else {
       throw new Error(`未知のフラグです：${arg}`);
     }
+  }
+  if (postCheck && !postText) {
+    throw new Error('--post-check には --text が必要です。');
   }
   let parsed;
   try {
@@ -88,7 +100,7 @@ function parseArgs(argv) {
   }
   // アカウントIDの検証は partitionName に任せるが、ここでも早めに弾く。
   partitionName(accountId);
-  return { accountId, url, smoke, proxy, verifySession, readCheck };
+  return { accountId, url, smoke, proxy, verifySession, readCheck, postCheck, postText };
 }
 
 /**
