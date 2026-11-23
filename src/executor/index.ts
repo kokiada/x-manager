@@ -13,11 +13,19 @@ import type {
   SearchBanCheckResult,
 } from './Executor';
 import type { ExecutorMode } from '../db/types';
+import { DesktopExecutor } from './DesktopExecutor';
 import { ExtensionExecutor } from './ExtensionExecutor';
 import { SimulatorExecutor } from './SimulatorExecutor';
 
 export * from './Executor';
+export { DesktopExecutor } from './DesktopExecutor';
 export { ExtensionExecutor } from './ExtensionExecutor';
+export {
+  DesktopNotConnectedError,
+  DesktopTimeoutError,
+  WindowBridgeTransport,
+  type DesktopTransport,
+} from './desktopTransport';
 export {
   ExtensionNotConnectedError,
   ExtensionTimeoutError,
@@ -28,18 +36,24 @@ export { checkExtensionConnection, type ExtensionConnection } from './extensionS
 
 /**
  * 実行方法の切替。既定はシミュレータ。設定画面で「拡張」を選ぶと
- * 拡張Executorに切り替わる（`setExecutorMode` は設定の読込時と
- * 保存時に呼ぶ）。モードはメモリ内にだけ持ち、設定値そのものは
- * AppSettings（IndexedDB）に保存する。
+ * 拡張Executorに、「デスクトップ」を選ぶと DesktopExecutor に
+ * 切り替わる（`setExecutorMode` は設定の読込時と保存時に呼ぶ）。
+ * モードはメモリ内にだけ持ち、設定値そのものは AppSettings
+ * （IndexedDB）に保存する。
  */
 let mode: ExecutorMode = 'simulator';
 const simulator = new SimulatorExecutor();
 let extensionExecutor: ExtensionExecutor | null = null;
+let desktopExecutor: DesktopExecutor | null = null;
 
 function activeExecutor(): Executor {
   if (mode === 'extension') {
     if (!extensionExecutor) extensionExecutor = new ExtensionExecutor();
     return extensionExecutor;
+  }
+  if (mode === 'desktop') {
+    if (!desktopExecutor) desktopExecutor = new DesktopExecutor();
+    return desktopExecutor;
   }
   return simulator;
 }
@@ -54,10 +68,10 @@ export function getExecutorMode(): ExecutorMode {
 
 /**
  * アプリ全体の Executor。呼び出し側はこの束縛だけを見る。
- * 内部で現在のモードに応じた実装（シミュレータ／拡張）に委譲する。
- * 拡張モードで拡張が未接続の場合、各メソッドは
- * ExtensionNotConnectedError を投げる — 黙ってシミュレータに
- * 落ちることはない。
+ * 内部で現在のモードに応じた実装（シミュレータ／拡張／
+ * デスクトップ）に委譲する。拡張・デスクトップモードで相手が
+ * 未接続の場合、各メソッドは NotConnectedError を投げる —
+ * 黙ってシミュレータに落ちることはない。
  */
 class DelegatingExecutor implements Executor {
   executePost(account: Account, content: PostContent): Promise<PostResult> {

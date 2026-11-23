@@ -50,7 +50,7 @@ export function Analytics() {
             <span className="page-no">07</span>分析
           </h1>
           <p className="page-lede">
-            ポスト分析・ポスト追跡・フォロワー推移（§12）。取得は{settings?.settings.executorMode === 'extension' ? 'Chrome 拡張' : 'シミュレータ'} Executor 経由です。
+            ポスト分析・ポスト追跡・フォロワー推移（§12）。取得は{settings?.settings.executorMode === 'extension' ? 'Chrome 拡張' : settings?.settings.executorMode === 'desktop' ? 'デスクトップ' : 'シミュレータ'} Executor 経由です。
           </p>
         </div>
       </div>

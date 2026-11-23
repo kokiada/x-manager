@@ -9,6 +9,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const { partitionName } = require('./partition.cjs');
 const { configureSession } = require('./session.cjs');
 
@@ -123,6 +124,9 @@ async function createHostWindow(electron, { accountId, url, proxy = undefined, c
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // D-06: デスクトップブリッジの preload。レンダラに
+      // window.xManagerDesktop.invoke だけを公開する。
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
   await win.loadURL(url);

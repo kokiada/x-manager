@@ -203,6 +203,8 @@ export function Settings() {
         投稿やチェックをどこで実行するかを選びます。「シミュレータ」は本物のXには届かない見本の動きです。
         「拡張」は Chrome 拡張「x-manager 実行役」に実際の操作を任せます（拡張の読み込みとアカウントの
         auth_token 登録は、拡張のポップアップで行います。詳しくは <code>extension/README.md</code>）。
+        「デスクトップ」は Electron 製のデスクトップアプリ本体に実際の操作を任せます（アカウントごとに
+        ブラウザセッションを分けます。詳しくは <code>docs/DESKTOP_DESIGN.md</code>）。
       </p>
       <div className="plan-list" role="radiogroup" aria-label="実行方法">
         <label className={`plan-row ${form.executorMode === 'simulator' ? 'selected' : ''}`}>
@@ -231,6 +233,20 @@ export function Settings() {
           </span>
           <span className="faded" style={{ fontSize: 12.5 }}>
             拡張が未接続のとき操作は失敗します
+          </span>
+        </label>
+        <label className={`plan-row ${form.executorMode === 'desktop' ? 'selected' : ''}`}>
+          <input
+            type="radio"
+            name="executor-mode"
+            checked={form.executorMode === 'desktop'}
+            onChange={() => setForm({ ...form, executorMode: 'desktop' })}
+          />
+          <span>
+            <strong>デスクトップ</strong>（実X操作）
+          </span>
+          <span className="faded" style={{ fontSize: 12.5 }}>
+            デスクトップアプリで開いているときに使えます
           </span>
         </label>
       </div>

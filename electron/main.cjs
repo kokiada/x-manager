@@ -20,15 +20,21 @@
 'use strict';
 
 const path = require('node:path');
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const { partitionName } = require('./src/partition.cjs');
 const { createHostWindow, parseArgs, runSmoke } = require('./src/host.cjs');
 const { verifySession } = require('./src/session.cjs');
 const { runReadCheckForAccount } = require('./src/readCheck.cjs');
 const { runPostTweetForAccount } = require('./src/postTweet.cjs');
+const { createBridgeHandler } = require('./src/bridge.cjs');
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  // D-06: デスクトップブリッジ。レンダラ（preload の
+  // window.xManagerDesktop.invoke）からの IPC をブリッジハンドラへ
+  // 渡す。--smoke / --read-check 等の既存経路には影響しない。
+  const bridgeHandler = createBridgeHandler();
+  ipcMain.handle('xmanager:bridge', (_event, message) => bridgeHandler(message));
   await app.whenReady();
   const electron = { BrowserWindow, session };
   if (args.postCheck) {

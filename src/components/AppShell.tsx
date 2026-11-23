@@ -67,7 +67,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const settingsRow = useLiveQuery(() => db.settings.get('app'), [], undefined);
-  const executorLabel = settingsRow?.settings.executorMode === 'extension' ? 'EXTENSION' : 'SIMULATOR';
+  const executorLabel =
+    settingsRow?.settings.executorMode === 'extension'
+      ? 'EXTENSION'
+      : settingsRow?.settings.executorMode === 'desktop'
+        ? 'DESKTOP'
+        : 'SIMULATOR';
 
   return (
     <div className="shell">

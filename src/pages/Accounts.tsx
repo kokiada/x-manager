@@ -412,7 +412,11 @@ export function Accounts() {
 
       <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
         行をクリックすると詳細が開きます。削除は詳細画面から行えます。チェックは
-        {settingsRow?.settings.executorMode === 'extension' ? 'Chrome 拡張' : 'シミュレータ'}
+        {settingsRow?.settings.executorMode === 'extension'
+          ? 'Chrome 拡張'
+          : settingsRow?.settings.executorMode === 'desktop'
+            ? 'デスクトップ'
+            : 'シミュレータ'}
         Executor 経由で実行され、結果は台帳に反映されます。
       </p>
 

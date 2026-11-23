@@ -174,8 +174,8 @@ export interface CheckSchedule {
   groupId: string | null;
 }
 
-/** 実行方法：シミュレータ（既定）か、Chrome 拡張による実X操作か。 */
-export type ExecutorMode = 'simulator' | 'extension';
+/** 実行方法：シミュレータ（既定）か、Chrome 拡張／デスクトップによる実X操作か。 */
+export type ExecutorMode = 'simulator' | 'extension' | 'desktop';
 
 export interface AppSettings {
   /** Contracted plan, expressed as its account cap (see PLAN_TIERS). */
@@ -183,9 +183,11 @@ export interface AppSettings {
   /**
    * How operations are executed. 'simulator' (default) runs the whole
    * app against a fake X; 'extension' delegates to the Chrome
-   * extension (docs/REAL_X_DESIGN.md). When 'extension' is selected
-   * but the extension is not connected, operations fail with a clear
-   * error instead of silently simulating.
+   * extension (docs/REAL_X_DESIGN.md); 'desktop' delegates to the
+   * Electron host via the desktop bridge (docs/DESKTOP_BRIDGE.md).
+   * When 'extension' or 'desktop' is selected but the other side is
+   * not connected, operations fail with a clear error instead of
+   * silently simulating.
    */
   executorMode: ExecutorMode;
   /**
