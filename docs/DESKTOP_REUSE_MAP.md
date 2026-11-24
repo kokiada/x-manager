@@ -78,7 +78,7 @@
 | `extensionPrecheck.ts` | 24 | 拡張の接続確認（`checkExtensionConnection` 経由） | 作り直し | ホストの接続確認に置き換わる。拡張方式用としては残す |
 | `format.ts` | 25 | 数値・時刻・トークンの表示整形 | 流用 | 純粋関数 |
 | `version.ts` | 30 | ビルド時コミットハッシュとバージョン表示 | 流用 | ビルド時注入はElectronでも同じ |
-| `emailLedger.ts` | — | 実装ファイルなし（`emailLedger.test.ts` のみ、repository＋backup越し） | 要確認 | テストが対象にしているのは repository／backup のメール関連関数。専用モジュール化するかはPhase 1で決める |
+| `emailLedger.ts` | — | 実装ファイルなし。機能は `db/repository.ts`（CRUD＋削除時のアカウント紐付け解除）＋ `backup.ts`（エクスポート／グループ絞り込み）に実装済み。UI（`Emails.tsx`）も repository を直接利用 | 不要（専用モジュール化しない） | P1-08 で解消：テストは対象に合わせて `src/db/emailAddresses.test.ts` へ移動（中身は変更なし）。薄いラッパーになるだけのため新規モジュールは作らない |
 | 各 `*.test.ts` | — | 各テスト | 流用 | 完了条件はテスト100%。desktop版は対応するテストを新規追加する |
 
 ## 未決・要確認（Phase 0 で確定するもの）
@@ -88,7 +88,6 @@
 - `mailTokenStore.ts`：メール用トークンの保管先（ホスト側への移し替え）。
 - `queryIds.js`：ページ文脈でのスキャン対象の取得方法。
 - `popup.js` の手入力フォーム：予備として残すかどうか（Phase 1）。
-- `emailLedger.ts`：専用モジュールとして切り出すか（Phase 1）。
 
 ## 次の切り分け（D-01の残り）
 

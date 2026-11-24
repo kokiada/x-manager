@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { db } from '../db/db';
+import { db } from './db';
 import {
   createAccount,
   createEmailAddress,
@@ -11,9 +11,9 @@ import {
   listEmailAddresses,
   replaceAllTables,
   updateEmailAddress,
-} from '../db/repository';
-import { buildGroupSubset, emptyTables } from './backup';
-import type { Account, EmailAddress } from '../db/types';
+} from './repository';
+import { buildGroupSubset, emptyTables } from '../lib/backup';
+import type { Account, EmailAddress } from './types';
 
 async function addAccount(handle: string, emailId?: string | null) {
   return createAccount({

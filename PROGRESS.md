@@ -140,7 +140,7 @@
 
 ルール（こうきくん 2026-11-22 15:30）：タスクは最小限の範囲に分解する。各タスクが完了してから次の作業に取り掛かる。完了条件はテスト100%実施（調査系タスクは成果物＋裏取りを完了条件とする）。
 
-- [x] D-01 実行層の棚卸し（ガッツ）— 完了（458d7b1、docs/DESKTOP_REUSE_MAP.md：extension/src・src/executor・src/lib をファイル単位で切り分け。ゆいが裏取り確認済み）。作り直しはセッション管理系と errorMessage・extensionLink・extensionPrecheck 等。要確認：src/lib/emailLedger はテストだけがあり実装ファイルが無い（Phase 1 で扱いを決める）。— 流用マップをファイル単位で「流用／作り直し」に切り分け、docs に記録する。完了条件：棚卸し表が repo に入り、内容が実ファイルと一致していることを確認できること。
+- [x] D-01 実行層の棚卸し（ガッツ）— 完了（458d7b1、docs/DESKTOP_REUSE_MAP.md：extension/src・src/executor・src/lib をファイル単位で切り分け。ゆいが裏取り確認済み）。作り直しはセッション管理系と errorMessage・extensionLink・extensionPrecheck 等。要確認だった src/lib/emailLedger は P1-08 で解消（専用モジュール化は不要、テストを src/db/emailAddresses.test.ts へ移動）。— 流用マップをファイル単位で「流用／作り直し」に切り分け、docs に記録する。完了条件：棚卸し表が repo に入り、内容が実ファイルと一致していることを確認できること。
 - [x] D-02 Electron 最小ホスト（ボブ）— partition 1つで x.com を開ける最小ホストを立てる。完了条件：手元環境で x.com の表示を確認し、ホストの自動テストが100%通ること。→ 2026-11-22 19:18 完了。こうきくんが PC で `npm run desktop` を実行し、x.com の表示を確認（HEAD f675758）。 ゆいの独立検証：テスト390件全パスを再実行で確認。smoke でホスト起動・partition ウィンドウ生成・x.com への遷移試行を確認（ゆいの VM では中間プロキシ証明書による ERR_CERT_AUTHORITY_INVALID のみが壁で、ホストの不具合ではない）。
 - [x] D-03 プロキシ＋Cookie の検証（ボブ）— 完了（a9e4bba）。partition への setProxy と cookies（auth_token/ct0）設定、--proxy / --verify-session を追加。ゆいの独立検証：テスト413件全パスを再実行で確認、実 Electron で --verify-session の動作（プロキシ解決・Cookie 有無のみで値を出さない）を確認。実通信の確認は 2026-11-22 の指示によりスキップ（保留）— partition へ setProxy と cookies 設定ができることを確かめる。完了条件：設定したプロキシ経由の通信と、設定した Cookie でのセッションが確認でき、テスト100%。
 - [x] D-04 読み取り実行の検証（ボブ）— ページ文脈 fetch でアカウントチェック相当の読み取りが通ること。完了条件：実データ相当の応答取得を確認し、テスト100%。 完了（5cc35d9）。ページ文脈 fetch で verify_credentials を実行し {id, handle} のみ返す readCheck.cjs と --read-check を追加。ゆいの独立検証：テスト440件全パスを再実行で確認、実 Electron で --read-check の実行とエラー分類（この VM では証明書エラー）を確認。実セッションでの成功確認は 2026-11-22 の指示によりスキップ（保留）。
@@ -158,7 +158,7 @@ Phase 1 以降のタスク分解は Phase 0（D-02〜D-05）完了後に行う�
 - [ ] P1-05 checkAccount の接続（ボブ）— ブリッジの handleJob が checkAccount を readCheck.cjs へつなぎ、AccountCheckResult の形（状態＋取れない数は -1＝不明の拡張方式の流儀）で返す。完了条件：ホストハンドラ→DesktopExecutor の結果までスタブで通ること。テスト100%。
 - [ ] P1-06 executePost の接続（ボブ）— ブリッジが executePost を postTweet.cjs へつなぐ（テキスト投稿のみ先行。メディア・コミュニティは Phase 2 まで not_implemented を正直に返す）。完了条件：スタブで投稿ジョブの往復が通ること。テスト100%。
 - [ ] P1-07 アプリ側の接続状態表示（ゆい、P1-02 の後）— desktopStatus（extensionStatus の対）を追加し、設定画面でデスクトップの接続状態と連携セッションを表示する。完了条件：テスト100%。
-- [ ] P1-08 emailLedger の要確認解消（ガッツ）— 実装ファイルが無いのにテストだけ存在する src/lib/emailLedger.test.ts について、必要なモジュールなのかを精査し、実装するか、不要なら理由を記録してテストを整理する。完了条件：棚卸し D-01 の要確認が解消され、テスト100%。
+- [x] P1-08 emailLedger の要確認解消（ガッツ）— 実装ファイルが無いのにテストだけ存在する src/lib/emailLedger.test.ts について、必要なモジュールなのかを精査し、実装するか、不要なら理由を記録してテストを整理する。完了条件：棚卸し D-01 の要確認が解消され、テスト100%。 完了（5fe22da）。精査結果：メール台帳の機能は db/repository.ts（CRUD＋削除時のアカウント紐付け解除）＋ backup.ts（エクスポート／グループ絞り込み）に実装済みで、UI（Emails.tsx）も repository を直接利用。テストが import しているのも repository／backup のみで、emailLedger.ts を作ると薄いラッパーになるだけのため専用モジュール化は不要と判断。テストは対象に合わせて src/db/emailAddresses.test.ts へ移動（中身は変更なし、import の相対パスのみ修正）。テスト527件全パス、tsc・lint 通過。棚卸しメモ（docs/DESKTOP_REUSE_MAP.md）の該当行と未決リストも更新済み。
 
 ## P1-01 進捗（2026-11-24、ボブ、HEAD 1c856a8＋未コミット）
 
