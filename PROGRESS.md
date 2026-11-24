@@ -160,6 +160,43 @@ Phase 1 以降のタスク分解は Phase 0（D-02〜D-05）完了後に行う�
 - [ ] P1-07 アプリ側の接続状態表示（ゆい、P1-02 の後）— desktopStatus（extensionStatus の対）を追加し、設定画面でデスクトップの接続状態と連携セッションを表示する。完了条件：テスト100%。
 - [ ] P1-08 emailLedger の要確認解消（ガッツ）— 実装ファイルが無いのにテストだけ存在する src/lib/emailLedger.test.ts について、必要なモジュールなのかを精査し、実装するか、不要なら理由を記録してテストを整理する。完了条件：棚卸し D-01 の要確認が解消され、テスト100%。
 
+## P1-01 進捗（2026-11-24、ボブ、HEAD 1c856a8＋未コミット）
+
+実装＋テスト＋VMでできる検証まで完了。チェックボックスは実PCでの目視確認が
+残っているため [ ] のまま。コミット・プッシュはしていない（親が検証してから行う）。
+
+- 実装：ホストがアプリ画面を開く経路を追加。`electron/src/host.cjs` に
+  `--app`（ビルド済みアプリ `dist/index.html` を file:// で開く。無ければ
+  `npm run build` を促す）・`--app-dev`（開発サーバー http://localhost:5173/）・
+  `--hello-check`（アプリ画面で hello ハンドシェイクの往復を確認し JSON を出す。
+  スクリーンショットを `electron/hello-check.png` に保存）を追加し、
+  `electron/main.cjs` に `--hello-check` の分岐を追加。`--app` /
+  `--app-dev` と `--url` の併用、`--hello-check` 単独はエラーにする。
+  既定の起動（x.com）と --smoke / --read-check / --post-check 等の既存経路は
+  変えていない。preload ブリッジ付きで開くことは従来の createHostWindow
+  のまま（テストで preload の指定も確認）。
+- ビルド済みアプリを file:// で読めるように vite の `base` を `'./'` にした
+  （従来の絶対パス /assets/... では file:// で JS/CSS が読めない。HTTP 配信時も
+  ルート・サブパスどちらでも同じように読める。アプリは HashRouter のため
+  file:// でもルーティングが動く）。`npm run build` 後の dist/index.html が
+  `./assets/...`・`./icon.svg` の相対参照になることを確認。
+- 検証：テスト527件全パス（新規13件：parseArgs の --app/--app-dev/--hello-check、
+  appFileUrl、runHelloCheck の成功・ブリッジ無し・ack 不正・読み込み失敗、
+  スクリーンショット）。tsc OK、lint エラー0（警告3件は既存のものと同一）、
+  build 通過、node --check 通過。
+- 実ホストでの検証（このVM、xvfb-run＋ELECTRON_DISABLE_SANDBOX=1）：
+  `--app --hello-check` が `{"ok":true,"hostVersion":"0.1.0","title":"x-manager | X複数アカウント管理コンソール","url":"file:///.../dist/index.html"}` で成功。
+  `--app-dev --hello-check`（`npm run dev` 起動中）も
+  `{"ok":true,"hostVersion":"0.1.0","title":"x-manager | X複数アカウント管理コンソール","url":"http://localhost:5173/"}` で成功。
+  スクリーンショットでサイドバー＋「読み込み中...」のアプリ画面がホスト内に
+  表示されていることを目視確認。dbus のエラーはヘッドレス環境のノイズ。
+- 残り（実PC分・保留）：こうきくんの PC での目視確認。`npm run desktop -- --app`
+  でアプリ画面が出ること、`npm run desktop -- --app --hello-check` で
+  `ok:true` になることを確認してほしい。確認できたらチェックボックスを [x] にする。
+- 変更ファイル：electron/main.cjs、electron/src/host.cjs、electron/src/host.test.ts、
+  vite.config.ts、electron/README.md、docs/DESKTOP_BRIDGE.md、.gitignore
+  （hello-check.png を smoke.png と同様に無視対象へ）。
+
 ## 認識合わせ（2026-11-22 18:05、PM：ゆい）
 
 こうきくんの指示でチームの状態を整理した。以後、進捗の正は origin/main とこのファイルとする。

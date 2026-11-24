@@ -5,18 +5,30 @@
  * 最小ホストは x.com を開くのが既定。--url で https の URL を
  * 指定できる（表示確認用。手元環境では x.com への通信が遮断
  * されるため、疎通確認は到達可能な https ページで行う）。
+ *
+ * P1-01: --app でビルド済みアプリ（dist/index.html）を、
+ * --app-dev で開発サーバー（http://localhost:5173/）を、
+ * preload ブリッジ付きで開く。--hello-check はアプリ画面で
+ * hello ハンドシェイクを実ホストで確かめる（結果を JSON で出す）。
+ * ビルド済みアプリは file:// で読むため、vite の base は './'
+ * にしてある（絶対パスのアセットでは file:// で読めない）。
  */
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { partitionName } = require('./partition.cjs');
 const { configureSession } = require('./session.cjs');
+const { DESKTOP_HOST_SOURCE, PROTOCOL_VERSION } = require('./bridge.cjs');
 
 const X_URL = 'https://x.com/';
+/** P1-01: 開発サーバーで動くアプリ画面の URL（`npm run dev`）。 */
+const APP_DEV_URL = 'http://localhost:5173/';
 const WINDOW_WIDTH = 1280;
 const WINDOW_HEIGHT = 800;
 const SMOKE_TIMEOUT_MS = 30000;
+const HELLO_CHECK_TIMEOUT_MS = SMOKE_TIMEOUT_MS;
 const PROXY_URL_SCHEMES = ['http:', 'https:', 'socks5:'];
 
 /** --proxy の値をプロキシ設定に変換する。port 必須。 */
@@ -43,16 +55,28 @@ function parseProxyArg(value) {
   return proxy;
 }
 
+/** P1-01: ビルド済みアプリ（dist/index.html）の file:// URL を返す。無ければビルドを促す。 */
+function appFileUrl(repoRoot = path.join(__dirname, '..', '..')) {
+  const indexPath = path.join(repoRoot, 'dist', 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    throw new Error(`ビルド済みアプリが見つかりません：${indexPath}。先に npm run build を実行してください。`);
+  }
+  return pathToFileURL(indexPath).href;
+}
+
 /** コマンドライン引数を読む。既定は smoke アカウント・x.com・通常起動。 */
 function parseArgs(argv) {
   let accountId = 'smoke';
   let url = X_URL;
+  let urlFlag = false;
   let smoke = false;
   let proxy = null;
   let verifySession = false;
   let readCheck = false;
   let postCheck = false;
   let postText = null;
+  let appMode = null;
+  let helloCheck = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--account') {
@@ -64,6 +88,7 @@ function parseArgs(argv) {
       const value = argv[i + 1];
       if (value === undefined) throw new Error('--url の値がありません。');
       url = value;
+      urlFlag = true;
       i += 1;
     } else if (arg === '--proxy') {
       const value = argv[i + 1];
@@ -83,6 +108,14 @@ function parseArgs(argv) {
       if (value === undefined) throw new Error('--text の値がありません。');
       postText = value;
       i += 1;
+    } else if (arg === '--app') {
+      if (appMode !== null) throw new Error('--app と --app-dev は同時に指定できません。');
+      appMode = 'built';
+    } else if (arg === '--app-dev') {
+      if (appMode !== null) throw new Error('--app と --app-dev は同時に指定できません。');
+      appMode = 'dev';
+    } else if (arg === '--hello-check') {
+      helloCheck = true;
     } else {
       throw new Error(`未知のフラグです：${arg}`);
     }
@@ -90,18 +123,34 @@ function parseArgs(argv) {
   if (postCheck && !postText) {
     throw new Error('--post-check には --text が必要です。');
   }
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error(`URLが不正です：${url}`);
+  if (appMode !== null && urlFlag) {
+    throw new Error('--app / --app-dev と --url は同時に指定できません。');
   }
-  if (parsed.protocol !== 'https:') {
-    throw new Error(`URLは https である必要があります：${url}`);
+  if (helloCheck && appMode === null) {
+    throw new Error('--hello-check には --app または --app-dev が必要です。');
+  }
+  if (appMode === 'built') {
+    url = appFileUrl();
+  } else if (appMode === 'dev') {
+    url = APP_DEV_URL;
+  }
+  // --url / 既定の URL は https 必須。アプリの URL
+  // （file:// のビルド済みアプリ、http://localhost:5173）は
+  // ここでは弾かない（ホストが開く自前の画面のため）。
+  if (appMode === null) {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`URLが不正です：${url}`);
+    }
+    if (parsed.protocol !== 'https:') {
+      throw new Error(`URLは https である必要があります：${url}`);
+    }
   }
   // アカウントIDの検証は partitionName に任せるが、ここでも早めに弾く。
   partitionName(accountId);
-  return { accountId, url, smoke, proxy, verifySession, readCheck, postCheck, postText };
+  return { accountId, url, smoke, proxy, verifySession, readCheck, postCheck, postText, appMode, helloCheck };
 }
 
 /**
@@ -172,13 +221,66 @@ async function runSmoke(
   }
 }
 
+/**
+ * P1-01: hello ハンドシェイク確認。アプリ画面を開き、ページ文脈で
+ * window.xManagerDesktop.invoke に hello を送り、hello-ack が返る
+ * ことを確かめる（preload → ipcMain → ブリッジハンドラの往復）。
+ * 失敗時は例外を投げず { ok: false, error } を返す。
+ * screenshotPath を渡すと capturePage の PNG を保存する。
+ */
+async function runHelloCheck(
+  electron,
+  { accountId, url, proxy = undefined, cookies = undefined, timeoutMs = HELLO_CHECK_TIMEOUT_MS, screenshotPath = null },
+) {
+  try {
+    const { window: win } = await withTimeout(
+      createHostWindow(electron, { accountId, url, proxy, cookies }),
+      timeoutMs,
+      '読み込みがタイムアウトしました',
+    );
+    const title = win.webContents.getTitle();
+    const currentUrl = win.webContents.getURL();
+    const ack = await withTimeout(
+      win.webContents.executeJavaScript(
+        `(() => { if (!window.xManagerDesktop) throw new Error('デスクトップブリッジが見つかりません（window.xManagerDesktop がありません）。'); return window.xManagerDesktop.invoke({ source: 'x-manager', kind: 'hello', version: ${PROTOCOL_VERSION} }); })()`,
+      ),
+      timeoutMs,
+      'hello ハンドシェイクがタイムアウトしました',
+    );
+    if (
+      typeof ack !== 'object' ||
+      ack === null ||
+      ack.source !== DESKTOP_HOST_SOURCE ||
+      ack.kind !== 'hello-ack' ||
+      ack.version !== PROTOCOL_VERSION ||
+      typeof ack.hostVersion !== 'string' ||
+      ack.hostVersion.length === 0
+    ) {
+      return { ok: false, error: 'デスクトップホストからの hello-ack の形が不正です。' };
+    }
+    let screenshot = null;
+    if (screenshotPath) {
+      const image = await win.webContents.capturePage();
+      fs.writeFileSync(screenshotPath, image.toPNG());
+      screenshot = screenshotPath;
+    }
+    return { ok: true, hostVersion: ack.hostVersion, title, url: currentUrl, screenshot };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 module.exports = {
   X_URL,
+  APP_DEV_URL,
+  HELLO_CHECK_TIMEOUT_MS,
   WINDOW_WIDTH,
   WINDOW_HEIGHT,
   SMOKE_TIMEOUT_MS,
+  appFileUrl,
   parseArgs,
   parseProxyArg,
   createHostWindow,
+  runHelloCheck,
   runSmoke,
 };

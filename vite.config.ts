@@ -16,6 +16,11 @@ function gitCommit(): string {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // P1-01: 相対パスでビルドする。デスクトップホストはビルド済み
+  // アプリを file://dist/index.html で開くため、絶対パス
+  // （/assets/...）では JS/CSS が読めない。http 配信時も
+  // ルート・サブパスどちらでも同じように読める。
+  base: './',
   // Build-time version info, shown in the sidebar and Settings so a
   // test run can confirm the running app contains the latest fixes.
   // NOTE: values are read when the dev server / build starts, so after

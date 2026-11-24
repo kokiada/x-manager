@@ -27,6 +27,11 @@ npm run desktop                  # x.com を開く（アカウントは既定の
 npm run desktop -- --account korosukeada
 npm run desktop -- --smoke        # 読み込み確認して終了。結果を JSON で出す
 npm run desktop -- --smoke --url https://example.com/
+npm run desktop -- --app          # ビルド済みアプリ（dist/index.html）を開く
+npm run desktop -- --app-dev      # 開発サーバー（http://localhost:5173/）のアプリを開く
+npm run desktop -- --app --hello-check   # アプリ画面で hello ハンドシェイクを確認する
+          # （結果を JSON で出す。--app-dev とも併用可。スクリーンショットを
+          # electron/hello-check.png に保存する）
 npm run desktop -- --proxy http://proxy.example.com:8080   # プロキシ経由で開く
 npm run desktop -- --verify-session --account korosukeada  # ウィンドウを開かず
           # partition のプロキシ解決と Cookie 有無だけ確認する（JSON を出す）
@@ -39,6 +44,18 @@ npm run desktop -- --post-check --text "hello" --account korosukeada
 
 `--smoke` は終了コード 0（表示OK）/ 1（失敗）で終わり、スクリーンショットを
 `electron/smoke.png` に保存する。`--url` は https のみ指定できる（表示確認用）。
+`--app` はビルド済みアプリ（`dist/index.html` を file:// で開く。無ければ
+`npm run build` を促すエラーになる）、`--app-dev` は開発サーバー
+（`http://localhost:5173/`。`npm run dev` を先に起動しておくこと）を開く。
+どちらも preload ブリッジ付きで開く。`--app` / `--app-dev` と `--url` の
+併用はできない。`--hello-check` は `--app` / `--app-dev` と組み合わせて使い、
+アプリ画面で hello ハンドシェイク（preload → ipcMain → ブリッジハンドラの
+往復）が通ることを確認する。成功時は
+`{"ok":true,"hostVersion":"0.1.0","title":"...","url":"..."}` を JSON で出し、
+スクリーンショットを `electron/hello-check.png` に保存する。終了コードは
+0（確認OK）/ 1（失敗）のつもりだが、実機では `process.exitCode` が
+`app.quit()` に伝わらず常に 0 で終わる既知の問題がある（D-02 の `--smoke`
+も同じ。JSON の `ok` で判定すること）。
 `--proxy` は `http://` / `https://` / `socks5://` の host:port を指定する
 （`user:pass@host:port` の形で認証情報も渡せる）。`--verify-session` は
 終了コード 0（確認OK）/ 1（失敗）で終わる。`--read-check` はページ文脈で
@@ -55,7 +72,11 @@ npx vitest run electron/src/
 ```
 
 electron モジュールは引数で受けるため、テストでは偽物に差し替えて検証する。
-実機の表示確認は `--smoke` で行う。実機のプロキシ・Cookie 確認は
+実機の表示確認は `--smoke` で行う。実機のアプリ画面＋ハンドシェイク確認は
+`--app --hello-check`（ビルド済みアプリ）または `--app-dev --hello-check`
+（開発サーバー。`npm run dev` を先に起動）で行う（同じく `xvfb-run -a` を付ける）。
+この VM でも両方とも実施できる（file:// の dist と localhost:5173 は到達可能）。
+実機のプロキシ・Cookie 確認は
 `--verify-session` で行う（xvfb-run が要る環境では `xvfb-run -a` を付ける）。
 実機の読み取り確認は `--read-check` で行う（同じく `xvfb-run -a` を付ける）。
 この VM では x.com に到達できないため `--read-check` は通信失敗になる。

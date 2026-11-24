@@ -5,6 +5,10 @@
  *   npm run desktop                 # x.com を開く
  *   npm run desktop -- --smoke       # 読み込み確認して終了（結果を JSON で出す）
  *   npm run desktop -- --smoke --url https://example.com/
+ *   npm run desktop -- --app           # ビルド済みアプリ（dist/index.html）を開く
+ *   npm run desktop -- --app-dev       # 開発サーバー（http://localhost:5173/）のアプリを開く
+ *   npm run desktop -- --app --hello-check      # アプリ画面で hello ハンドシェイクを
+ *                                     # 確認する（結果を JSON で出す。--app-dev とも併用可）
  *   npm run desktop -- --read-check  # ページ文脈 fetch でアカウントチェック
  *                                     # 相当の読み取りを実行（結果を JSON で出す）
  *   npm run desktop -- --post-check --text "hello"  # ページ文脈 fetch で投稿を実行
@@ -22,7 +26,7 @@
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const { partitionName } = require('./src/partition.cjs');
-const { createHostWindow, parseArgs, runSmoke } = require('./src/host.cjs');
+const { createHostWindow, parseArgs, runHelloCheck, runSmoke } = require('./src/host.cjs');
 const { verifySession } = require('./src/session.cjs');
 const { runReadCheckForAccount } = require('./src/readCheck.cjs');
 const { runPostTweetForAccount } = require('./src/postTweet.cjs');
@@ -72,6 +76,21 @@ async function main() {
     // Cookie の値は出さない。--proxy を渡すとそのプロキシを適用して確認する。
     const sess = session.fromPartition(partitionName(args.accountId));
     const result = await verifySession(sess, args.proxy);
+    console.log(JSON.stringify(result));
+    process.exitCode = result.ok ? 0 : 1;
+    app.quit();
+    return;
+  }
+  if (args.helloCheck) {
+    // P1-01: アプリ画面を開き、ページ文脈で hello を送って
+    // hello-ack が返ることを確認する。結果を JSON で出す。
+    // --app（ビルド済みアプリ）/ --app-dev（開発サーバー）と併用する。
+    const result = await runHelloCheck(electron, {
+      accountId: args.accountId,
+      url: args.url,
+      proxy: args.proxy ?? undefined,
+      screenshotPath: path.join(__dirname, 'hello-check.png'),
+    });
     console.log(JSON.stringify(result));
     process.exitCode = result.ok ? 0 : 1;
     app.quit();

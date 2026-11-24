@@ -92,7 +92,26 @@ Phase 1 で `readCheck`（checkAccount）・`postTweet`
 その際、メディアはジョブの payload に inline で載せる
 （チャンク転送はしない。`DesktopExecutor` のコメント参照）。
 
-## 6. アプリ側の部品
+## 7. アプリ画面の起動（P1-01）
+
+ホストはアプリ画面も同じウィンドウ（preload ブリッジ付き）で開く。
+
+- `--app`：ビルド済みアプリ `dist/index.html` を `file://` で開く。
+  無ければ `npm run build` を促すエラーになる。
+- `--app-dev`：開発サーバー `http://localhost:5173/` を開く
+  （`npm run dev` を先に起動しておくこと）。
+- `--hello-check`：`--app` / `--app-dev` と組み合わせて使い、
+  アプリ画面で hello ハンドシェイク（preload → ipcMain →
+  ブリッジハンドラの往復）が通ることを確認する。成功時は
+  `{ ok: true, hostVersion, title, url }` を JSON で出し、
+  スクリーンショットを `electron/hello-check.png` に保存する。
+
+ビルド済みアプリは `file://` で読むため、vite の `base` は
+`'./'` にしてある（絶対パス `/assets/...` では `file://` で
+JS/CSS が読めない。HTTP 配信時もルート・サブパスどちらでも
+同じように読める）。
+
+## 8. アプリ側の部品
 
 - `src/executor/desktopProtocol.ts`：型と検証関数
   （`isDesktopHelloAck` / `isDesktopJobResult` /
