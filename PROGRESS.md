@@ -158,7 +158,7 @@ Phase 1 以降のタスク分解は Phase 0（D-02〜D-05）完了後に行う�
 - [ ] P1-05 checkAccount の接続（ボブ）— ブリッジの handleJob が checkAccount を readCheck.cjs へつなぎ、AccountCheckResult の形（状態＋取れない数は -1＝不明の拡張方式の流儀）で返す。完了条件：ホストハンドラ→DesktopExecutor の結果までスタブで通ること。テスト100%。
 - [ ] P1-06 executePost の接続（ボブ）— ブリッジが executePost を postTweet.cjs へつなぐ（テキスト投稿のみ先行。メディア・コミュニティは Phase 2 まで not_implemented を正直に返す）。完了条件：スタブで投稿ジョブの往復が通ること。テスト100%。
 - [ ] P1-07 アプリ側の接続状態表示（ゆい、P1-02 の後）— desktopStatus（extensionStatus の対）を追加し、設定画面でデスクトップの接続状態と連携セッションを表示する。完了条件：テスト100%。
-- [x] P1-08 emailLedger の要確認解消（ガッツ）— 実装ファイルが無いのにテストだけ存在する src/lib/emailLedger.test.ts について、必要なモジュールなのかを精査し、実装するか、不要なら理由を記録してテストを整理する。完了条件：棚卸し D-01 の要確認が解消され、テスト100%。 完了（5fe22da）。精査結果：メール台帳の機能は db/repository.ts（CRUD＋削除時のアカウント紐付け解除）＋ backup.ts（エクスポート／グループ絞り込み）に実装済みで、UI（Emails.tsx）も repository を直接利用。テストが import しているのも repository／backup のみで、emailLedger.ts を作ると薄いラッパーになるだけのため専用モジュール化は不要と判断。テストは対象に合わせて src/db/emailAddresses.test.ts へ移動（中身は変更なし、import の相対パスのみ修正）。テスト527件全パス、tsc・lint 通過。棚卸しメモ（docs/DESKTOP_REUSE_MAP.md）の該当行と未決リストも更新済み。
+- [x] P1-08 emailLedger の要確認解消（ガッツ）— 実装ファイルが無いのにテストだけ存在する src/lib/emailLedger.test.ts について、必要なモジュールなのかを精査し、実装するか、不要なら理由を記録してテストを整理する。完了条件：棚卸し D-01 の要確認が解消され、テスト100%。 完了（b598f7a）。精査結果：メール台帳の機能は db/repository.ts（CRUD＋削除時のアカウント紐付け解除）＋ backup.ts（エクスポート／グループ絞り込み）に実装済みで、UI（Emails.tsx）も repository を直接利用。テストが import しているのも repository／backup のみで、emailLedger.ts を作ると薄いラッパーになるだけのため専用モジュール化は不要と判断。テストは対象に合わせて src/db/emailAddresses.test.ts へ移動（中身は変更なし、import の相対パスのみ修正）。テスト527件全パス、tsc・lint 通過。棚卸しメモ（docs/DESKTOP_REUSE_MAP.md）の該当行と未決リストも更新済み。
 
 ## P1-01 進捗（2026-11-24、ボブ、HEAD 1c856a8＋未コミット）
 
