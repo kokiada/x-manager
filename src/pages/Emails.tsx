@@ -9,7 +9,7 @@ import {
   updateEmailAddress,
 } from '../db/repository';
 import { checkEmailLinks } from '../lib/emailLinkCheck';
-import { Button, Modal, useToast } from '../components/ui';
+import { Button, Modal, Tooltip, useToast } from '../components/ui';
 
 type ModalState =
   | { kind: 'none' }
@@ -65,7 +65,12 @@ function EmailForm({
         />
       </div>
       <div className="field">
-        <label htmlFor="em-provider">プロバイダ</label>
+        <label htmlFor="em-provider">
+          プロバイダ{' '}
+          <Tooltip label="受信チェックは Gmail / Outlook を優先対応します。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </label>
         <select
           id="em-provider"
           value={provider}
@@ -77,9 +82,6 @@ function EmailForm({
             </option>
           ))}
         </select>
-        <div className="hint">
-          受信チェックは Gmail / Outlook を優先対応します（設計は docs/EMAIL_DESIGN.md）。
-        </div>
       </div>
       <div className="field">
         <label htmlFor="em-label">ラベル / メモ</label>
@@ -163,10 +165,10 @@ export function Emails() {
         <div>
           <h1 className="page-title">
             <span className="page-no">11</span>メールアドレス
+            <Tooltip label="削除してもアカウント自体は消えず、紐づけだけ外れます。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
           </h1>
-          <p className="page-lede">
-            アカウントに紐づけるメールアドレスの台帳。削除してもアカウント自体は消えず、紐づけだけ外れます。
-          </p>
         </div>
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <Button variant="primary" onClick={() => setModal({ kind: 'add' })}>
@@ -209,7 +211,7 @@ export function Emails() {
       {emails === undefined && <p className="faded">読み込み中…</p>}
       {emails !== undefined && emails.length === 0 && (
         <p className="faded">
-          メールアドレスがまだ登録されていません。「メールアドレス追加」から登録してください。
+          メールアドレスがまだ登録されていません。
         </p>
       )}
       {(emails ?? []).map((e) => {
@@ -242,7 +244,7 @@ export function Emails() {
       })}
 
       <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
-        受信メールのチェックはまだ未実装です。設計は docs/EMAIL_DESIGN.md を参照してください。
+        受信メールのチェックはまだ未実装です。
       </p>
 
       {modal.kind === 'add' && (

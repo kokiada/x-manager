@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { Account, EmailAddress, Group, NewAccount, ProxyGroup } from '../db/types';
 import { ACCOUNT_STATUSES, STATUS_LABELS } from '../db/types';
 import { maskToken } from '../lib/format';
-import { Button } from './ui';
+import { Button, Tooltip } from './ui';
 
 interface Props {
   initial?: Account;
@@ -117,7 +117,6 @@ export function AccountForm({ initial, groups, proxyGroups, emails = [], onSubmi
               </option>
             ))}
           </select>
-          <div className="hint">1アカウントに割り当てられるプロキシは1つだけです。</div>
         </div>
       </div>
 
@@ -133,7 +132,7 @@ export function AccountForm({ initial, groups, proxyGroups, emails = [], onSubmi
           ))}
         </select>
         <div className="hint">
-          メールアドレス台帳で追加したものから選べます。アカウントの認証や連絡先の管理用です。
+          メールアドレス台帳で追加したものから選べます。
         </div>
       </div>
 
@@ -153,7 +152,12 @@ export function AccountForm({ initial, groups, proxyGroups, emails = [], onSubmi
       </div>
 
       <div className="field">
-        <label htmlFor="af-token">auth_token（トークンログイン用）</label>
+        <label htmlFor="af-token">
+          auth_token（トークンログイン用）{' '}
+          <Tooltip label="端末内にのみ保存され、画面には常にマスク表示されます。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </label>
         <input
           id="af-token"
           value={authToken}
@@ -162,10 +166,11 @@ export function AccountForm({ initial, groups, proxyGroups, emails = [], onSubmi
           autoComplete="off"
           spellCheck={false}
         />
-        <div className="hint">
-          端末内（IndexedDB）にのみ保存され、画面には常にマスク表示されます。
-          {initial?.authToken ? '空欄のまま保存すると現在のトークンを保持します。' : ''}
-        </div>
+        {initial?.authToken && (
+          <div className="hint">
+            空欄のまま保存すると現在のトークンを保持します。
+          </div>
+        )}
       </div>
 
       <div className="field">

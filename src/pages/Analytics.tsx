@@ -20,7 +20,7 @@ import {
 } from '../lib/analytics';
 import { checkedAtLabel, fullCount } from '../lib/format';
 import { errorMessageOf } from '../lib/errorMessage';
-import { Button, useToast } from '../components/ui';
+import { Button, Tooltip, useToast } from '../components/ui';
 
 const SORT_LABELS: Record<AnalyticsSortKey, string> = {
   likes: 'いいね',
@@ -49,9 +49,6 @@ export function Analytics() {
           <h1 className="page-title">
             <span className="page-no">07</span>分析
           </h1>
-          <p className="page-lede">
-            ポスト分析・ポスト追跡・フォロワー推移（§12）。取得は{settings?.settings.executorMode === 'extension' ? 'Chrome 拡張' : settings?.settings.executorMode === 'desktop' ? 'デスクトップ' : 'シミュレータ'} Executor 経由です。
-          </p>
         </div>
       </div>
 
@@ -156,7 +153,7 @@ function PostAnalyticsTab({
   return (
     <div>
       <section className="panel">
-        <h2 className="panel-title">ポスト分析（§12-1）</h2>
+        <h2 className="panel-title">ポスト分析</h2>
         <div className="form-row">
           <div className="field">
             <label htmlFor="an-account">分析するアカウント</label>
@@ -170,7 +167,12 @@ function PostAnalyticsTab({
             </select>
           </div>
           <div className="field">
-            <label htmlFor="an-count">取得件数</label>
+            <label htmlFor="an-count">
+              取得件数{' '}
+              <Tooltip label="上限はプランのアカウント数×10件です。">
+                <span aria-hidden="true">？</span>
+              </Tooltip>
+            </label>
             <input
               id="an-count"
               type="number"
@@ -179,10 +181,11 @@ function PostAnalyticsTab({
               value={wantCount}
               onChange={(e) => setWantCount(Math.max(1, Number(e.target.value) || 1))}
             />
-            <p className="hint">
-              上限はプラン（{planAccounts}アカウント）の ×10 = {fullCount(cap)}件。
-              {effectiveCount >= 1000 && ` ${effectiveCount.toLocaleString('ja-JP')}件には取得アカウントが${requiredFetchers(effectiveCount)}つ以上必要です。`}
-            </p>
+            {effectiveCount >= 1000 && (
+              <p className="hint">
+                {effectiveCount.toLocaleString('ja-JP')}件には取得アカウントが{requiredFetchers(effectiveCount)}つ以上必要です。
+              </p>
+            )}
           </div>
         </div>
         <div className="field">
@@ -218,9 +221,11 @@ function PostAnalyticsTab({
           <Button onClick={copyForAi} disabled={sorted.length === 0}>
             AI分析用にコピー
           </Button>
-          <span className="faded" style={{ fontSize: 12.5 }}>
-            {sorted.length > 0 ? `${sorted.length}件の結果（取得: ${checkedAtLabel(rows?.[0]?.fetchedAt)}）` : '結果はこの端末に履歴保存されます'}
-          </span>
+          {sorted.length > 0 && (
+            <span className="faded" style={{ fontSize: 12.5 }}>
+              {sorted.length}件の結果（取得: {checkedAtLabel(rows?.[0]?.fetchedAt)}）
+            </span>
+          )}
         </div>
       </section>
 
@@ -338,11 +343,14 @@ function PostTrackingTab({
   return (
     <div>
       <section className="panel">
-        <h2 className="panel-title">ポスト追跡（ベータ版・§12-2）</h2>
-        <p style={{ fontSize: 13.5, marginTop: 0 }}>
-          登録アカウントの投稿について、投稿から30分・1時間・3時間・12時間・24時間・48時間の
-          時点ごとの表示回数・いいね・リポスト・ブックマークを記録します。
-          スナップショットはシミュレータの数値から補完したデモ表示です（実運用では起動中に10分おきに取得）。
+        <h2 className="panel-title">
+          ポスト追跡（ベータ版）{' '}
+          <Tooltip label="投稿から30分・1時間・3時間・12時間・24時間・48時間の時点ごとに記録します。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </h2>
+        <p className="faded" style={{ fontSize: 13, marginTop: 0 }}>
+          スナップショットはシミュレータの数値から補完したデモ表示です。
         </p>
         <div className="form-row">
           <div className="field">
@@ -424,10 +432,15 @@ function FollowerTrendTab({ accounts }: { accounts: Account[] }) {
   return (
     <div>
       <section className="panel">
-        <h2 className="panel-title">フォロワー推移（§12-3）</h2>
+        <h2 className="panel-title">フォロワー推移</h2>
         <div className="form-row">
           <div className="field">
-            <label htmlFor="fw-account">アカウント</label>
+            <label htmlFor="fw-account">
+              アカウント{' '}
+              <Tooltip label="1日1回記録し、アカウントごとに最大400日分保存します。記録されなかった日をまたぐ区間は破線で表示します。">
+                <span aria-hidden="true">？</span>
+              </Tooltip>
+            </label>
             <select id="fw-account" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               <option value="">アカウントを選ぶ…</option>
               {accounts.map((a) => (
@@ -436,9 +449,6 @@ function FollowerTrendTab({ accounts }: { accounts: Account[] }) {
                 </option>
               ))}
             </select>
-            <p className="hint">
-              1日1回記録し、アカウントごとに最大400日分保存します。記録されなかった日をまたぐ区間は破線で表示します。
-            </p>
           </div>
         </div>
       </section>
@@ -489,7 +499,6 @@ function FollowerChart({
     else runs[runs.length - 1].push({ date: p.date, followers: p.followers });
   }
 
-  const gapCount = runs.length - 1;
   const last = rows[rows.length - 1];
   const first = rows[0];
   const change = last.followers - first.followers;
@@ -502,7 +511,6 @@ function FollowerChart({
       <p className="faded" style={{ fontSize: 13, marginTop: 0 }}>
         {first.date}：{fullCount(first.followers)} → {last.date}：{fullCount(last.followers)}
         （{change >= 0 ? '+' : ''}{fullCount(change)}）
-        {gapCount > 0 && `・記録のない日が${gapCount}か所あり、破線で表示しています`}
       </p>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }} role="img" aria-label="フォロワー数の推移グラフ">
         {[0, 0.5, 1].map((f) => {

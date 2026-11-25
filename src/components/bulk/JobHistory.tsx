@@ -124,7 +124,7 @@ export function JobHistory() {
       </h3>
       {reservations === undefined && <p className="faded">読み込み中…</p>}
       {reservations !== undefined && reservations.length === 0 && (
-        <p className="faded">予約はありません。「投稿を作成」タブから予約できます。</p>
+        <p className="faded">予約はありません。</p>
       )}
       {(reservations ?? []).map((r) => (
         <div key={r.id} className="simple-row" style={{ border: '1px solid var(--c-line)', background: 'var(--c-panel)', padding: '10px 12px', marginBottom: 8 }}>

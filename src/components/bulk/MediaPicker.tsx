@@ -172,10 +172,6 @@ export function MediaPicker({
           </div>
         </>
       )}
-      <p className="hint" style={{ fontSize: 11.5, color: 'var(--c-dim)' }}>
-        対応形式: 画像 png/jpg/gif/webp、動画 mp4/mov。画像5MB超は失敗警告、動画は140秒・512MBまで。
-        ファイル本体はこの端末のセッション内のみで保持し、保存されるのは名前等のメタデータだけです。
-      </p>
     </div>
   );
 }

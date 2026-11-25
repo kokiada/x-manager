@@ -25,7 +25,7 @@ import { MediaPicker, type SelectedMedia } from '../components/bulk/MediaPicker'
 import { PollEditor } from '../components/bulk/PollEditor';
 import { RandomWordsManager } from '../components/bulk/RandomWordsManager';
 import { TemplateManager } from '../components/bulk/TemplateManager';
-import { Button, useToast } from '../components/ui';
+import { Button, Tooltip, useToast } from '../components/ui';
 
 type View = 'compose' | 'templates' | 'history' | 'autopost';
 
@@ -213,7 +213,7 @@ export function BulkPost() {
     setWarnings(v.warnings);
     if (v.errors.length > 0) return;
     await createReservation({ scheduledAt, accountIds, payload, intervalSec });
-    toast.push('予約を作成しました。「予約・履歴」タブで確認できます', 'ok');
+    toast.push('予約を作成しました', 'ok');
   };
 
   const setSegment = (i: number, text: string) =>
@@ -227,11 +227,10 @@ export function BulkPost() {
         <div>
           <h1 className="page-title">
             <span className="page-no">04</span>一括投稿
+            <Tooltip label="投稿の実行方法は設定の「実行方法（X連携）」に従います。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
           </h1>
-          <p className="page-lede">
-            登録アカウントへ同じ内容を上から順に投稿します。間隔は1〜60秒、テンプレートとランダム文言で
-            文面に揺らぎを持たせられます。実行方法は設定画面の「実行方法（X連携）」に従います。
-          </p>
         </div>
       </div>
 
@@ -256,7 +255,11 @@ export function BulkPost() {
         <div>
           <h2 className="section-title" style={{ marginTop: 0 }}>テンプレート（最大2,000件）</h2>
           <TemplateManager />
-          <h2 className="section-title">ランダム文言</h2>
+          <h2 className="section-title">ランダム文言
+            <Tooltip label="本文に [Random1] のように書くと、投稿ごとにその番号の文言から1つがランダムに選ばれて置き換わります。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
+          </h2>
           <RandomWordsManager />
         </div>
       )}
@@ -277,7 +280,7 @@ export function BulkPost() {
               {accounts === undefined ? (
                 <p className="faded">読み込み中…</p>
               ) : accounts.length === 0 ? (
-                <p className="faded">アカウントがまだ登録されていません。アカウント画面から追加してください。</p>
+                <p className="faded">アカウントがまだ登録されていません。</p>
               ) : (
                 <AccountOrderPicker
                   accounts={accounts}
@@ -346,7 +349,7 @@ export function BulkPost() {
                 {targetType === 'reply' && (
                   <input
                     type="text"
-                    placeholder="リプライ先ポストのURL（https://x.com/.../status/...）"
+                    placeholder="リプライ先ポストのURL"
                     value={replyToUrl}
                     onChange={(e) => setReplyToUrl(e.target.value)}
                     aria-label="リプライ先ポストのURL"
@@ -371,7 +374,7 @@ export function BulkPost() {
                   rows={5}
                   value={segments[0]}
                   onChange={(e) => setSegment(0, e.target.value)}
-                  placeholder="投稿本文。[Random1] でランダム文言が使えます"
+                  placeholder="投稿本文"
                 />
                 <div className="char-line">
                   <span className={weightedLength(segments[0]) > POST_CHAR_LIMIT ? 'over' : ''}>
@@ -390,13 +393,17 @@ export function BulkPost() {
                 {unregistered.length > 0 && (
                   <p className="hint" style={{ color: 'var(--c-warn)' }}>
                     {unregistered.map((n) => `[Random${n}]`).join(' ')} の文言が未登録です（そのまま投稿されます）。
-                    「テンプレート / ランダム文言」タブで登録できます。
                   </p>
                 )}
               </div>
 
               <div className="field">
-                <label>ツリーの続き（2件目以降は直前へのリプライ）</label>
+                <label>
+                  ツリーの続き{' '}
+                  <Tooltip label="2件目以降は直前へのリプライになります。">
+                    <span aria-hidden="true">？</span>
+                  </Tooltip>
+                </label>
                 {segments.slice(1).map((seg, i) => (
                   <div key={i} className="poll-row" style={{ alignItems: 'flex-start' }}>
                     <span className="mono dim" style={{ fontSize: 12, paddingTop: 8 }}>
@@ -430,7 +437,12 @@ export function BulkPost() {
               </div>
 
               <div className="field">
-                <label>メディア</label>
+                <label>
+                  メディア{' '}
+                  <Tooltip label="対応形式：画像 png/jpg/gif/webp、動画 mp4/mov。画像5MB超は失敗警告、動画は140秒・512MBまで。ファイル本体はこの端末のセッション内のみで保持し、保存されるのは名前等のメタデータだけです。">
+                    <span aria-hidden="true">？</span>
+                  </Tooltip>
+                </label>
                 <MediaPicker
                   value={mediaSel}
                   onChange={(next) => {
@@ -463,7 +475,12 @@ export function BulkPost() {
 
               <div className="form-row">
                 <div className="field">
-                  <label htmlFor="reply-perm">返信できるアカウント</label>
+                  <label htmlFor="reply-perm">
+                    返信できるアカウント{' '}
+                    <Tooltip label="通常投稿のみ有効。ツリーでは1件目に付きます。">
+                      <span aria-hidden="true">？</span>
+                    </Tooltip>
+                  </label>
                   <select
                     id="reply-perm"
                     value={replyPermission}
@@ -476,7 +493,6 @@ export function BulkPost() {
                       </option>
                     ))}
                   </select>
-                  <p className="hint">通常投稿のみ有効。ツリーでは1件目に付きます。</p>
                 </div>
                 <div className="field">
                   <label>有料パートナーシップ</label>
@@ -521,7 +537,12 @@ export function BulkPost() {
             <h2 className="panel-title">実行</h2>
             <div className="form-row">
               <div className="field">
-                <label htmlFor="interval">投稿間隔（秒）</label>
+                <label htmlFor="interval">
+                  投稿間隔（秒）{' '}
+                  <Tooltip label="アカウントごとに上から順に、この間隔を空けて投稿します（1〜60秒）。">
+                    <span aria-hidden="true">？</span>
+                  </Tooltip>
+                </label>
                 <input
                   id="interval"
                   type="number"
@@ -533,17 +554,20 @@ export function BulkPost() {
                     setIntervalSec(Math.min(INTERVAL_MAX_SEC, Math.max(INTERVAL_MIN_SEC, Number(e.target.value) || INTERVAL_MIN_SEC)));
                   }}
                 />
-                <p className="hint">アカウントごとに上から順に、この間隔を空けて投稿します（{INTERVAL_MIN_SEC}〜{INTERVAL_MAX_SEC}秒）。</p>
               </div>
               <div className="field">
-                <label htmlFor="reserve-at">予約日時（予約投稿の場合）</label>
+                <label htmlFor="reserve-at">
+                  予約日時（予約投稿の場合）{' '}
+                  <Tooltip label="現在から5分以上先。アプリを開いている間に実行されます。アンケート・コミュニティ投稿は予約できません。">
+                    <span aria-hidden="true">？</span>
+                  </Tooltip>
+                </label>
                 <input
                   id="reserve-at"
                   type="datetime-local"
                   value={reserveAt}
                   onChange={(e) => setReserveAt(e.target.value)}
                 />
-                <p className="hint">現在から5分以上先。アプリを開いている間に実行されます。アンケート・コミュニティ投稿は予約できません。</p>
               </div>
             </div>
 
@@ -570,7 +594,7 @@ export function BulkPost() {
                 予約する
               </Button>
               <span className="faded" style={{ fontSize: 12.5 }}>
-                対象 {accountIds.length}件 / ロック・凍結・未ログインは自動でスキップされます
+                対象 {accountIds.length}件
               </span>
             </div>
           </section>

@@ -8,7 +8,7 @@ import {
   deleteProxyGroup,
   renameGroup,
 } from '../db/repository';
-import { Button, useToast } from './ui';
+import { Button, Tooltip, useToast } from './ui';
 
 /**
  * Manage account groups and proxy groups.
@@ -143,10 +143,12 @@ export function GroupManager({ onClose }: { onClose: () => void }) {
         </Button>
       </div>
 
-      <h3 className="section-title">プロキシグループ</h3>
-      <p className="faded" style={{ fontSize: 12.5, marginTop: 0 }}>
-        推奨は1プロキシあたり5アカウント程度まで（XBoard公式FAQの目安）。
-      </p>
+      <h3 className="section-title">
+        プロキシグループ{' '}
+        <Tooltip label="推奨は1プロキシあたり5アカウント程度までです。">
+          <span aria-hidden="true">？</span>
+        </Tooltip>
+      </h3>
       {(proxyGroups ?? []).map((p) => (
         <div key={p.id} className="toolbar" style={{ marginBottom: 8 }}>
           <span style={{ fontWeight: 700 }}>{p.name}</span>

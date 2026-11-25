@@ -237,7 +237,7 @@ export function TemplateManager() {
       <div className="ledger-simple">
         {templates === undefined && <div className="ledger-empty">読み込み中…</div>}
         {templates !== undefined && filtered.length === 0 && (
-          <div className="ledger-empty">テンプレートがありません。「テンプレート作成」から追加してください。</div>
+          <div className="ledger-empty">テンプレートがありません。</div>
         )}
         {filtered.map((t) => (
           <div key={t.id} className="simple-row">

@@ -5,7 +5,7 @@ import { markAllNotificationsRead, markNotificationRead } from '../db/repository
 import { refreshNotifications } from '../lib/notificationService';
 import { checkedAtLabel, fullCount } from '../lib/format';
 import { errorMessageOf } from '../lib/errorMessage';
-import { Button, useToast } from '../components/ui';
+import { Button, Tooltip, useToast } from '../components/ui';
 
 export function Inbox() {
   const toast = useToast();
@@ -60,11 +60,10 @@ export function Inbox() {
         <div>
           <h1 className="page-title">
             <span className="page-no">08</span>通知 / DM
+            <Tooltip label="件数はアカウントチェックで取得され、本文はアカウントごとの「通知を更新」で取り込みます。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
           </h1>
-          <p className="page-lede">
-            全アカウントの通知とDMを集約します（§11）。件数はアカウントチェックで取得され、本文は
-            アカウントごとの「通知を更新」で取り込みます。
-          </p>
         </div>
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <Button
@@ -82,15 +81,15 @@ export function Inbox() {
       <div className="kv-strip">
         <div className="kv-cell">
           <div className="kv-num">{fullCount(totalNotifications)}</div>
-          <div className="kv-label">未対応の通知 合計（アカウントチェック時点）</div>
+          <div className="kv-label">未対応の通知</div>
         </div>
         <div className="kv-cell">
           <div className="kv-num">{fullCount(totalDm)}</div>
-          <div className="kv-label">未読DM 合計（アカウントチェック時点）</div>
+          <div className="kv-label">未読DM</div>
         </div>
         <div className="kv-cell">
           <div className="kv-num">{fullCount(unread)}</div>
-          <div className="kv-label">この画面で未読の項目</div>
+          <div className="kv-label">未読の項目</div>
         </div>
       </div>
 
@@ -139,8 +138,7 @@ export function Inbox() {
         <div className="placeholder-box">
           <div className="ph-tag">EMPTY</div>
           <p style={{ marginBottom: 0 }}>
-            通知・DMの本文はまだ取り込まれていません。アカウント別の「通知を更新」ボタンで取り込めます。
-            （件数はアカウントチェックで更新されます）
+            通知・DMの本文はまだ取り込まれていません。
           </p>
         </div>
       ) : (
@@ -167,8 +165,7 @@ export function Inbox() {
         </div>
       )}
       <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
-        注意：通知・DMの本文集約の詳細はマニュアルに文書化されていません（§11）。この画面の本文は
-        シミュレータが件数から生成したデモ表示です。実運用では Executor の実実装が本文を取得します。
+        この画面の本文はシミュレータが生成したデモ表示です。
       </p>
     </div>
   );

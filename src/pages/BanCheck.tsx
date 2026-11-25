@@ -10,7 +10,7 @@ import {
 } from '../lib/searchBanPacing';
 import { checkedAtLabel } from '../lib/format';
 import { errorMessageOf } from '../lib/errorMessage';
-import { Button, useToast } from '../components/ui';
+import { Button, Tooltip, useToast } from '../components/ui';
 
 function verdictMark(value: boolean | null): string {
   return value === null ? '⚠' : value ? '○' : '✗';
@@ -123,11 +123,10 @@ export function BanCheck() {
         <div>
           <h1 className="page-title">
             <span className="page-no">06</span>バンチェック
+            <Tooltip label="Xの検索は15分に50回までで、1アカウントのチェックに2回使います。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
           </h1>
-          <p className="page-lede">
-            登録アカウントのポストが検索結果の「話題」と「最新」に表示されるか確認します（§9-1）。
-            Xの検索は15分に50回までで、1アカウントのチェックに2回使います。
-          </p>
         </div>
       </div>
 
@@ -135,7 +134,12 @@ export function BanCheck() {
         <h2 className="panel-title">サーチバンチェックを実行</h2>
         <div className="form-row">
           <div className="field">
-            <label>チェックに使うアカウント（ログイン済みのみ）</label>
+            <label>
+              チェックに使うアカウント（ログイン済みのみ）{' '}
+              <Tooltip label="複数選ぶと分担してチェックするため、待ち時間がその分だけ減ります。">
+                <span aria-hidden="true">？</span>
+              </Tooltip>
+            </label>
             {loggedIn.length === 0 ? (
               <p className="faded" style={{ fontSize: 13 }}>ログイン済みのアカウントがありません。</p>
             ) : (
@@ -162,7 +166,6 @@ export function BanCheck() {
                 ))}
               </div>
             )}
-            <p className="hint">複数選ぶと分担してチェックするため、待ち時間がその分だけ減ります。</p>
           </div>
           <div className="field">
             <label htmlFor="ban-group">チェックするグループ</label>
@@ -215,9 +218,6 @@ export function BanCheck() {
           <Button variant="primary" onClick={run} disabled={running || targets.length === 0}>
             {running ? 'チェック中…' : 'サーチバンチェックを実行'}
           </Button>
-          <span className="faded" style={{ fontSize: 12.5 }}>
-            結果は履歴に保存されます。定期チェックは「設定」から有効化できます。
-          </span>
         </div>
       </section>
 
@@ -266,12 +266,15 @@ export function BanCheck() {
         </div>
       )}
 
-      <h2 className="section-title">リプライバンチェック</h2>
+      <h2 className="section-title">
+        リプライバンチェック{' '}
+        <Tooltip label="判定手順は文書化されていません。最新リプライ一覧で確認する方式です。">
+          <span aria-hidden="true">？</span>
+        </Tooltip>
+      </h2>
       <section className="panel">
-        <p style={{ fontSize: 13.5, marginTop: 0 }}>
-          マニュアルにリプライバンの判定手順・判定基準は文書化されていません（§9-2）。
-          文書化されているのは「各アカウントの最新リプライ一覧で確認する」という方式のみです。
-          下の一覧はシミュレータのデモデータで、実際の判定にはX上で最新リプライが表示されるかをご確認ください。
+        <p className="faded" style={{ fontSize: 13, marginTop: 0 }}>
+          一覧はシミュレータのデモ表示です。
         </p>
         <div className="toolbar">
           <Button onClick={loadReplyDemo} disabled={replyLoading || loggedIn.length === 0}>

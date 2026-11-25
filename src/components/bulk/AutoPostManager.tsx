@@ -11,7 +11,7 @@ import {
 import { nextFireForRule } from '../../lib/autoPostEngine';
 import { checkedAtLabel } from '../../lib/format';
 import { AccountOrderPicker } from './AccountOrderPicker';
-import { Button, useToast } from '../ui';
+import { Button, Tooltip, useToast } from '../ui';
 
 const MODE_LABELS: Record<AutoPostMode, string> = {
   random_window: '時間帯の中でランダム',
@@ -180,11 +180,12 @@ export function AutoPostManager() {
   return (
     <div>
       <section className="panel">
-        <h2 className="panel-title">自動投稿（§6-6）</h2>
-        <p style={{ fontSize: 13.5, marginTop: 0 }}>
-          アプリを開いている間だけ動作します。予定時刻を15分以上過ぎた投稿はスキップします。
-          アカウントをまたいだ投稿は60秒以上（＋0〜30秒のランダム）空けます。
-        </p>
+        <h2 className="panel-title">
+          自動投稿{' '}
+          <Tooltip label="アプリを開いている間だけ動作します。予定時刻を15分以上過ぎた投稿はスキップします。アカウントをまたいだ投稿は60秒以上（＋0〜30秒のランダム）空けます。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </h2>
         <p className="dim" style={{ fontSize: 12.5 }}>
           エンジン状態: 稼働中（30秒ごとに確認）
           {(rules ?? []).filter((r) => r.enabled).length === 0 && '・有効なルールがありません'}

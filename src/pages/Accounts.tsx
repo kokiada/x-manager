@@ -14,7 +14,7 @@ import { errorMessageOf, SESSION_EXPIRED_MESSAGE } from '../lib/errorMessage';
 import { checkExtensionReady } from '../lib/extensionPrecheck';
 import { AccountForm } from '../components/AccountForm';
 import { GroupManager } from '../components/GroupManager';
-import { Button, Modal, StatusBadge, useToast } from '../components/ui';
+import { Button, Modal, StatusBadge, Tooltip, useToast } from '../components/ui';
 import { useLinkedAccounts } from '../hooks/useLinkedAccounts';
 import { isLinkedAccount } from '../lib/extensionLink';
 
@@ -29,7 +29,6 @@ export function Accounts() {
   const navigate = useNavigate();
 
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], undefined);
-  const settingsRow = useLiveQuery(() => db.settings.get('app'), [], undefined);
   const groups = useLiveQuery(() => db.groups.orderBy('order').toArray(), [], []);
   const proxyGroups = useLiveQuery(() => db.proxyGroups.toArray(), [], []);
   const emails = useLiveQuery(() => db.emailAddresses.toArray(), [], []);
@@ -243,10 +242,10 @@ export function Accounts() {
         <div>
           <h1 className="page-title">
             <span className="page-no">02</span>アカウント
+            <Tooltip label="状態・通知/DM件数・フォロワー数はアカウントチェックで更新されます。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
           </h1>
-          <p className="page-lede">
-            アカウント台帳。状態・通知/DM件数・フォロワー数はアカウントチェックで更新されます。
-          </p>
         </div>
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <Button
@@ -334,8 +333,8 @@ export function Accounts() {
         {accounts !== undefined && filtered.length === 0 && (
           <div className="ledger-empty">
             {accounts.length === 0
-              ? 'アカウントがまだ登録されていません。「アカウント追加」から登録するか、データ管理からCSVで取り込んでください。'
-              : '条件に合うアカウントがありません。検索条件を変えるか、アカウントを追加してください。'}
+              ? 'アカウントがまだ登録されていません。'
+              : '条件に合うアカウントがありません。'}
           </div>
         )}
         {filtered.map((a) => (
@@ -411,13 +410,7 @@ export function Accounts() {
       </div>
 
       <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
-        行をクリックすると詳細が開きます。削除は詳細画面から行えます。チェックは
-        {settingsRow?.settings.executorMode === 'extension'
-          ? 'Chrome 拡張'
-          : settingsRow?.settings.executorMode === 'desktop'
-            ? 'デスクトップ'
-            : 'シミュレータ'}
-        Executor 経由で実行され、結果は台帳に反映されます。
+        行をクリックすると詳細が開きます。
       </p>
 
       {modal.kind === 'add' && (

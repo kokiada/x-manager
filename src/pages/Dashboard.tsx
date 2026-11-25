@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { db } from '../db/db';
 import { ACCOUNT_STATUSES, STATUS_LABELS, type AccountStatus } from '../db/types';
-import { compactCount, fullCount } from '../lib/format';
+import { fullCount } from '../lib/format';
 import { StatusBadge } from '../components/ui';
 
 const STATUS_COLOR: Record<AccountStatus, string> = {
@@ -28,7 +28,6 @@ export function Dashboard() {
             <h1 className="page-title">
               <span className="page-no">01</span>ダッシュボード
             </h1>
-            <p className="page-lede">全アカウントの状態サマリと、対応が必要なアラート。</p>
           </div>
         </div>
         <div className="placeholder-box">
@@ -59,7 +58,6 @@ export function Dashboard() {
           <h1 className="page-title">
             <span className="page-no">01</span>ダッシュボード
           </h1>
-          <p className="page-lede">全アカウントの状態サマリと、対応が必要なアラート。</p>
         </div>
       </div>
 
@@ -85,15 +83,15 @@ export function Dashboard() {
       <div className="kv-strip">
         <div className="kv-cell">
           <div className="kv-num">{fullCount(totalFollowers)}</div>
-          <div className="kv-label">総フォロワー数（概算 {compactCount(totalFollowers)}）</div>
+          <div className="kv-label">総フォロワー数</div>
         </div>
         <div className="kv-cell">
           <div className="kv-num">{fullCount(totalNotifications)}</div>
-          <div className="kv-label">未対応の通知 合計</div>
+          <div className="kv-label">通知</div>
         </div>
         <div className="kv-cell">
           <div className="kv-num">{fullCount(totalDm)}</div>
-          <div className="kv-label">未読DM 合計</div>
+          <div className="kv-label">DM</div>
         </div>
       </div>
 

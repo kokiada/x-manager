@@ -31,7 +31,12 @@ function ScheduleFields({
 }) {
   return (
     <div className="field">
-      <label>{legend}</label>
+      <label>
+        {legend}{' '}
+        <Tooltip label="アプリを開いている間だけ動作し、開始時刻を15分以上過ぎた回は見送ります。">
+          <span aria-hidden="true">？</span>
+        </Tooltip>
+      </label>
       <div style={{ display: 'flex', gap: 'var(--sp-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         <label className="radio-label">
           <input
@@ -64,7 +69,6 @@ function ScheduleFields({
           ))}
         </select>
       </div>
-      <div className="hint">アプリを開いている間だけ動作し、開始時刻を15分以上過ぎた回は見送ります。</div>
     </div>
   );
 }
@@ -160,7 +164,6 @@ export function Settings() {
           <h1 className="page-title">
             <span className="page-no">10</span>設定
           </h1>
-          <p className="page-lede">契約プラン、ブラウザの同時保持数、投稿の既定値と定期チェックの設定。</p>
         </div>
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <Button variant="primary" onClick={save} disabled={saving}>
@@ -169,10 +172,14 @@ export function Settings() {
         </div>
       </div>
 
-      <h2 className="section-title">契約プラン</h2>
+      <h2 className="section-title">
+        契約プラン
+        <Tooltip label="全プランで機能に差異はありません。">
+          <span aria-hidden="true">？</span>
+        </Tooltip>
+      </h2>
       <p className="faded" style={{ fontSize: 13 }}>
-        登録できるアカウント数の上限を決めるプランです。全プランで機能に差異はありません。
-        現在 <strong>{accountCount}件</strong> のアカウントが登録されています。
+        現在 <strong>{accountCount}件</strong> 登録中です。
       </p>
       {overPlan && (
         <ul className="note-list error">
@@ -204,13 +211,6 @@ export function Settings() {
           <span aria-hidden="true">？</span>
         </Tooltip>
       </h2>
-      <p className="faded" style={{ fontSize: 13 }}>
-        投稿やチェックをどこで実行するかを選びます。「シミュレータ」は本物のXには届かない見本の動きです。
-        「拡張」は Chrome 拡張「x-manager 実行役」に実際の操作を任せます（拡張の読み込みとアカウントの
-        auth_token 登録は、拡張のポップアップで行います。詳しくは <code>extension/README.md</code>）。
-        「デスクトップ」は Electron 製のデスクトップアプリ本体に実際の操作を任せます（アカウントごとに
-        ブラウザセッションを分けます。詳しくは <code>docs/DESKTOP_DESIGN.md</code>）。
-      </p>
       <div className="plan-list" role="radiogroup" aria-label="実行方法">
         <label className={`plan-row ${form.executorMode === 'simulator' ? 'selected' : ''}`}>
           <input
@@ -256,7 +256,12 @@ export function Settings() {
         </label>
       </div>
       <div className="field">
-        <label>拡張の接続状態</label>
+        <label>
+          拡張の接続状態{' '}
+          <Tooltip label="未接続のまま「拡張」を選んで保存すると操作はエラーになります。連携は拡張のポップアップで行い、アカウント画面の「拡張の連携を取り込む」で台帳に入ります。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </label>
         <p className="faded" style={{ fontSize: 13, margin: '4px 0 8px' }}>
           {extStatus === null
             ? 'まだ確認していません。'
@@ -277,21 +282,18 @@ export function Settings() {
         <Button onClick={checkExtension} disabled={checkingExt}>
           {checkingExt ? '確認中…' : '接続を確認'}
         </Button>
-        <div className="hint">
-          拡張を読み込んだ Chrome でこのアプリを開いているときに確認できます。拡張が未接続のまま「拡張」を選んで保存すると、操作はエラーになります（シミュレータには戻りません）。
-          連携画面は拡張のポップアップから開けます。
-          連携しただけではアプリのアカウント一覧には増えません。アカウント画面で「拡張の連携を取り込む」を押すと、連携したアカウントが台帳に入ります。
-        </div>
       </div>
 
-      <h2 className="section-title">デモデータ</h2>
+      <h2 className="section-title">
+        デモデータ
+        <Tooltip label="見本のアカウント・グループ・テンプレートなどを消去します。自分で追加したデータは残ります。消去後はデモデータは再表示されません。">
+          <span aria-hidden="true">？</span>
+        </Tooltip>
+      </h2>
       <p className="faded" style={{ fontSize: 13 }}>
-        初回起動時に入る見本のアカウント・グループ・テンプレートなどを消去します。
-        自分で追加したアカウントやデータは残ります。消去後は、空の状態でもデモデータは
-        再表示されません。
         {demoAccountCount > 0
-          ? ` 現在、デモアカウントが ${demoAccountCount}件 あります。`
-          : ' 現在、デモデータはありません。'}
+          ? `現在、デモアカウントが ${demoAccountCount}件 あります。`
+          : '現在、デモデータはありません。'}
       </p>
       <Button
         variant={confirmClearDemo ? 'danger' : 'default'}
@@ -313,7 +315,12 @@ export function Settings() {
 
       <h2 className="section-title">ブラウザ</h2>
       <div className="field">
-        <label htmlFor="max-browsers">同時に開いておくブラウザ数</label>
+        <label htmlFor="max-browsers">
+          同時に開いておくブラウザ数{' '}
+          <Tooltip label="上限は契約プランのアカウント数です。上限を超える分は最も長く使っていないアカウントのブラウザから閉じられます。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </label>
         <input
           id="max-browsers"
           type="number"
@@ -325,16 +332,21 @@ export function Settings() {
           }
           style={{ width: 130 }}
         />
-        <div className="hint">
-          契約プランのアカウント数（{form.planAccounts}）より大きい値は選べません。上限を超える分は最も長く使っていないアカウントのブラウザから閉じられます。
-          {form.maxConcurrentBrowsers > form.planAccounts &&
-            ` 現在の入力は上限に合わせて ${browsersClamped} として保存されます。`}
-        </div>
+        {form.maxConcurrentBrowsers > form.planAccounts && (
+          <div className="hint">
+            現在の入力は上限に合わせて {browsersClamped} として保存されます。
+          </div>
+        )}
       </div>
 
       <h2 className="section-title">投稿</h2>
       <div className="field">
-        <label htmlFor="default-interval">一括投稿の既定の投稿間隔（秒）</label>
+        <label htmlFor="default-interval">
+          一括投稿の既定の投稿間隔（秒）{' '}
+          <Tooltip label="一括投稿画面の投稿間隔の初期値です（1〜60秒）。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </label>
         <input
           id="default-interval"
           type="number"
@@ -352,7 +364,6 @@ export function Settings() {
           }
           style={{ width: 130 }}
         />
-        <div className="hint">一括投稿画面の投稿間隔の初期値として使われます（{INTERVAL_MIN_SEC}〜{INTERVAL_MAX_SEC}秒）。</div>
       </div>
 
       <h2 className="section-title">定期チェック</h2>
@@ -368,17 +379,11 @@ export function Settings() {
         groups={groups}
         onChange={(searchBanCheck) => setForm({ ...form, searchBanCheck })}
       />
-      <p className="dim" style={{ fontSize: 12 }}>
-        定期チェックはアプリを開いている間に実行されます。開始時刻を15分以上過ぎた回は見送ります。
-        実行状況はバンチェック画面の履歴でも確認できます。
-      </p>
 
       <h2 className="section-title">バージョン</h2>
       <p className="dim" style={{ fontSize: 12 }}>
         実行中のアプリのビルド：コミット {APP_COMMIT}
         {APP_BUILD_TIME ? `（ビルド ${formatBuildTime(APP_BUILD_TIME)}）` : ''}
-        。最新の修正が入っているかは、リモート main の先頭コミットと見比べてください。
-        サイドバー下部にも同じ表示があります。
       </p>
 
       <div className="toolbar">

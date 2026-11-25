@@ -24,7 +24,7 @@ import {
 } from '../lib/backup';
 import { downloadTextFile } from '../lib/csv';
 import { checkedAtLabel } from '../lib/format';
-import { Button, PlainBadge, useToast } from '../components/ui';
+import { Button, PlainBadge, Tooltip, useToast } from '../components/ui';
 
 function fileStamp(): string {
   const d = new Date();
@@ -201,10 +201,10 @@ export function DataManagement() {
         <div>
           <h1 className="page-title">
             <span className="page-no">09</span>データ管理
+            <Tooltip label="データは端末内にのみ保存され、サーバーへは送信されません。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
           </h1>
-          <p className="page-lede">
-            アカウントCSVの入出力と、暗号化バックアップによる端末間のデータ移行。データは端末内にのみ保存され、サーバーへは送信されません。
-          </p>
         </div>
       </div>
 
@@ -212,10 +212,12 @@ export function DataManagement() {
 
       {!loading && (
         <>
-          <h2 className="section-title">アカウントCSV（グループ・アカウント整理）</h2>
-          <p className="faded" style={{ fontSize: 13 }}>
-            一覧をCSVで書き出し、Excel等で編集して取り込み直すための入出力です。書出はUTF-8（BOM付き）、取込はUTF-8とShift_JISに対応します。
-          </p>
+          <h2 className="section-title">
+            アカウントCSV（グループ・アカウント整理）{' '}
+            <Tooltip label="書出はUTF-8（BOM付き）、取込はUTF-8とShift_JISに対応します。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
+          </h2>
           <ul className="note-list">
             <li>見出し行を変更したCSVは取り込めません。</li>
             <li>
@@ -287,11 +289,12 @@ export function DataManagement() {
             </div>
           )}
 
-          <h2 className="section-title">暗号化バックアップ（端末同期の代替）</h2>
-          <p className="faded" style={{ fontSize: 13 }}>
-            全データをパスワードで暗号化したファイルとして書き出し、別の端末で復元できます（PBKDF2 + AES-256-GCM）。
-            パスワードは端末にだけ保持され、どこにも保存されません。<strong>パスワードを忘れるとデータは復旧できません。</strong>
-          </p>
+          <h2 className="section-title">
+            暗号化バックアップ（端末同期の代替）{' '}
+            <Tooltip label="パスワードは端末にだけ保持され、どこにも保存されません。忘れると復旧できません。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
+          </h2>
 
           <div className="form-row">
             <div className="field">

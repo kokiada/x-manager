@@ -11,7 +11,7 @@ import { checkedAtLabel, fullCount, maskToken } from '../lib/format';
 import { errorMessageOf, SESSION_EXPIRED_MESSAGE } from '../lib/errorMessage';
 import { checkExtensionReady } from '../lib/extensionPrecheck';
 import { AccountForm } from '../components/AccountForm';
-import { Button, Modal, StatusBadge, useToast } from '../components/ui';
+import { Button, Modal, StatusBadge, Tooltip, useToast } from '../components/ui';
 import { useLinkedAccounts } from '../hooks/useLinkedAccounts';
 import { isLinkedAccount } from '../lib/extensionLink';
 
@@ -165,14 +165,18 @@ export function AccountDetail() {
           </div>
         </div>
         <div className="detail-cell">
-          <div className="k">アカウントID（拡張の連携用）</div>
+          <div className="k">
+            アカウントID（拡張の連携用）{' '}
+            <Tooltip label="Chrome 拡張のポップアップにこのIDと auth_token を登録すると連携されます。">
+              <span aria-hidden="true">？</span>
+            </Tooltip>
+          </div>
           <div className="v mono" style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span>{account.id}</span>
             <Button small onClick={copyAccountId}>
               コピー
             </Button>
           </div>
-          <div className="hint">Chrome 拡張のポップアップにこのIDと auth_token を登録すると連携されます。</div>
         </div>
         <div className="detail-cell">
           <div className="k">サーチバン判定</div>

@@ -12,7 +12,7 @@ import {
 import { runBulkAction, type RandomRange } from '../lib/bulkActionService';
 import { runAutoActionCycle } from '../lib/autoActionEngine';
 import { AccountOrderPicker } from '../components/bulk/AccountOrderPicker';
-import { Button, useToast } from '../components/ui';
+import { Button, Tooltip, useToast } from '../components/ui';
 import { checkedAtLabel } from '../lib/format';
 
 type Tab = 'bulk' | 'rules' | 'feed';
@@ -40,9 +40,6 @@ export function BulkAction() {
           <h1 className="page-title">
             <span className="page-no">05</span>一括操作
           </h1>
-          <p className="page-lede">
-            ポストへのいいね・リポスト・ブックマークの一括実行と、アカウントの一括フォロー（§8）、条件で自動実行する自動操作ルール（§7）。
-          </p>
         </div>
       </div>
 
@@ -148,7 +145,7 @@ function BulkActionTab() {
   return (
     <div>
       <section className="panel">
-        <h2 className="panel-title">投稿の一括操作（§7-1）</h2>
+        <h2 className="panel-title">投稿の一括操作</h2>
         <div className="form-row">
           <div className="field">
             <label htmlFor="ba-targets">
@@ -168,8 +165,8 @@ function BulkActionTab() {
             />
             <p className="hint">
               {kind === 'follow'
-                ? '対象は複数指定できます。自分自身は自動で除外されます。'
-                : '対象は複数指定できます。投稿者本人のアカウントは自動で除外されます。'}
+                ? '自分自身は自動で除外されます。'
+                : '投稿者本人のアカウントは自動で除外されます。'}
             </p>
           </div>
           <div className="field">
@@ -446,7 +443,12 @@ function AutoActionRulesTab() {
   return (
     <div>
       <section className="panel">
-        <h2 className="panel-title">1日の上限（全ルール共通）</h2>
+        <h2 className="panel-title">
+          1日の上限（全ルール共通）{' '}
+          <Tooltip label="上限は有効なルールの中で最も小さい値が使われます。実行待ち分も含めて数えます。">
+            <span aria-hidden="true">？</span>
+          </Tooltip>
+        </h2>
         <div className="progress-line">
           <span>本日の実行数</span>
           <span className="mono">
@@ -458,16 +460,10 @@ function AutoActionRulesTab() {
             style={{ width: `${Math.min(100, (doneToday / cap) * 100)}%`, height: '100%', background: doneToday >= cap ? 'var(--c-warn)' : 'var(--c-amber)' }}
           />
         </div>
-        <p className="hint" style={{ marginTop: 6 }}>
-          上限は有効なルールの中で最も小さい値が使われます。実行待ち分も含めて数えます（§7-2）。
-        </p>
         <div className="toolbar">
           <Button onClick={simulate} disabled={simulating}>
             {simulating ? 'シミュレーション中…' : '投稿をシミュレーション'}
           </Button>
-          <span className="faded" style={{ fontSize: 12.5 }}>
-            トリガーアカウントの新規投稿を模擬して、ルールを1回評価します
-          </span>
         </div>
       </section>
 
@@ -671,7 +667,7 @@ function ActivityFeedTab() {
         <div className="placeholder-box">
           <div className="ph-tag">EMPTY</div>
           <p style={{ marginBottom: 0 }}>
-            自動操作の実行履歴はまだありません。「自動操作ルール」タブの「投稿をシミュレーション」で試せます。
+            自動操作の実行履歴はまだありません。
           </p>
         </div>
       ) : (

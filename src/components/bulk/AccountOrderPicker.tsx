@@ -78,11 +78,11 @@ export function AccountOrderPicker({
       </div>
 
       <h3 className="mini-title">
-        投稿順（{selected.length}件・上から順に実行）
+        投稿順（{selected.length}件）
       </h3>
       {selected.length === 0 ? (
         <p className="faded" style={{ fontSize: 13 }}>
-          上の一覧でチェックしたアカウントが、ここに投稿順で並びます。
+          まだ選択されていません。
         </p>
       ) : (
         <ol className="order-list">

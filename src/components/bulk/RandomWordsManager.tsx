@@ -88,11 +88,6 @@ export function RandomWordsManager() {
 
   return (
     <div>
-      <p className="faded" style={{ fontSize: 13 }}>
-        本文に <span className="mono">[Random1]</span> のように書くと、投稿ごとにその番号の文言から
-        1つがランダムに選ばれて置き換わります。文言は1行に1つ、URLも使えます（
-        <span className="mono">&lt;br&gt;</span> は改行になります）。
-      </p>
       <div className="toolbar">
         <input
           type="number"
@@ -138,7 +133,7 @@ export function RandomWordsManager() {
       <div className="ledger-simple">
         {sets === undefined && <div className="ledger-empty">読み込み中…</div>}
         {sets !== undefined && sets.length === 0 && (
-          <div className="ledger-empty">文言リストはまだありません。番号を指定して追加してください。</div>
+          <div className="ledger-empty">文言リストはまだありません。</div>
         )}
         {(sets ?? []).map((s) => (
           <div key={s.no} className="simple-row" style={{ alignItems: 'flex-start' }}>
