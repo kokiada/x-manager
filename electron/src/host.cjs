@@ -167,7 +167,10 @@ async function createHostWindow(electron, { accountId, url, proxy = undefined, c
   const win = new electron.BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
-    title: 'x-manager — x.com',
+    // アプリ画面（file:// / localhost）を開くときはアプリ名だけにする。
+    // 以前は常に「x-manager — x.com」で、アプリを開いても X を開いた
+    // ように見える紛らわしさがあった。
+    title: url.startsWith('file:') || url.startsWith('http://localhost') ? 'x-manager' : 'x-manager — x.com',
     webPreferences: {
       partition,
       contextIsolation: true,
