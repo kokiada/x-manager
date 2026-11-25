@@ -135,6 +135,18 @@ describe('setSessionCookies', () => {
     );
   });
 
+  it('有効期限付きの永続 Cookie として設定する（再起動で消えない）', async () => {
+    const f = fakeSession();
+    const before = Math.floor(Date.now() / 1000);
+    await setSessionCookies(f.session, [{ name: 'auth_token', value: 'secret-token' }]);
+    const details = f.set.mock.calls[0][0] as { expirationDate?: number };
+    expect(typeof details.expirationDate).toBe('number');
+    expect(details.expirationDate!).toBeGreaterThan(before + 179 * 24 * 3600);
+    await expect(
+      setSessionCookies(f.session, [{ name: 'ct0', value: 'x', expirationDate: -1 }]),
+    ).rejects.toThrow(/expirationDate/);
+  });
+
   it('auth_token / ct0 以外・空の値・不正な domain は受け付けない', async () => {
     const f = fakeSession();
     await expect(setSessionCookies(f.session, [{ name: 'other', value: 'x' }])).rejects.toThrow(

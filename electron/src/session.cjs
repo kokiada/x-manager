@@ -15,6 +15,8 @@ const X_COOKIE_URL = 'https://x.com/';
 const X_COOKIE_DOMAIN = '.x.com';
 const X_COOKIE_PATH = '/';
 const SESSION_COOKIE_NAMES = ['auth_token', 'ct0'];
+/** プログラムから設定する Cookie の既定の有効期間（180日、秒）。 */
+const SESSION_COOKIE_TTL_SEC = 180 * 24 * 3600;
 const PROXY_SCHEMES = ['http', 'https', 'socks5'];
 
 /** ポートが 1〜65535 の整数か。 */
@@ -80,7 +82,10 @@ function validateSessionCookie(cookie) {
   if (!cookie || typeof cookie !== 'object' || Array.isArray(cookie)) {
     throw new Error('Cookie が不正です。オブジェクトで指定してください。');
   }
-  const { name, value, domain, path } = cookie;
+  const { name, value, domain, path, expirationDate } = cookie;
+  if (expirationDate !== undefined && (typeof expirationDate !== 'number' || !Number.isFinite(expirationDate) || expirationDate <= 0)) {
+    throw new Error(`Cookie ${name} の expirationDate が不正です。正の数（UNIX秒）で指定してください。`);
+  }
   if (!SESSION_COOKIE_NAMES.includes(name)) {
     throw new Error(`設定できる Cookie は auth_token / ct0 のみです：${String(name)}`);
   }
@@ -119,6 +124,10 @@ async function setSessionCookies(sess, cookies) {
       // auth_token は JS から読めない実 Cookie と同じ扱い、ct0 は JS から読む。
       httpOnly: cookie.name === 'auth_token',
       sameSite: 'lax',
+      // 有効期限を付けないとセッション Cookie になり、アプリ再起動で
+      // 消えてしまう（実機検証で確認）。実ログインの auth_token と
+      // 同じく永続 Cookie として保存する。
+      expirationDate: cookie.expirationDate ?? Math.floor(Date.now() / 1000) + SESSION_COOKIE_TTL_SEC,
     });
     names.push(cookie.name);
   }
@@ -175,6 +184,7 @@ module.exports = {
   X_COOKIE_DOMAIN,
   SESSION_COOKIE_NAMES,
   PROXY_SCHEMES,
+  SESSION_COOKIE_TTL_SEC,
   buildProxyRules,
   applyProxy,
   validateSessionCookie,
