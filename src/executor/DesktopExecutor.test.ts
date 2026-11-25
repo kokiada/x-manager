@@ -34,6 +34,7 @@ function fakeTransport(
     sent,
     ping: async () => ({ version: 1, hostVersion: '0.1.0' }),
     listSessions: async () => [{ accountId: 'acc-1', handle: 'testuser' }],
+    openLogin: async (accountId: string) => ({ ok: true, accountId, xUserId: '999', handle: 'testuser' }),
     sendJob: async (job) => {
       sent.push(job);
       return handler(job);
@@ -268,6 +269,9 @@ describe('DesktopExecutor', () => {
         throw new DesktopNotConnectedError();
       },
       listSessions: async () => {
+        throw new DesktopNotConnectedError();
+      },
+      openLogin: async () => {
         throw new DesktopNotConnectedError();
       },
       sendJob: async () => {

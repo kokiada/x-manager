@@ -172,3 +172,48 @@ describe('WindowBridgeTransport', () => {
     await expect(transport.ping(500)).rejects.toThrow('ホスト側で失敗しました');
   });
 });
+
+describe('WindowBridgeTransport.openLogin', () => {
+  it('openLogin は open-login を送って結果を返す', async () => {
+    const bridge = fakeBridge(() => ({
+      source: DESKTOP_HOST_SOURCE,
+      kind: 'open-login-result',
+      accountId: 'acc-1',
+      ok: true,
+      xUserId: '12345',
+      handle: 'alice',
+    }));
+    const transport = new WindowBridgeTransport(bridge);
+    await expect(transport.openLogin('acc-1')).resolves.toEqual({
+      source: DESKTOP_HOST_SOURCE,
+      kind: 'open-login-result',
+      accountId: 'acc-1',
+      ok: true,
+      xUserId: '12345',
+      handle: 'alice',
+    });
+    expect(bridge.invoked[0]).toMatchObject({
+      source: PAGE_SOURCE,
+      kind: 'open-login',
+      accountId: 'acc-1',
+    });
+  });
+
+  it('openLogin は別アカウントの結果は受け取らない', async () => {
+    const bridge = fakeBridge(() => ({
+      source: DESKTOP_HOST_SOURCE,
+      kind: 'open-login-result',
+      accountId: 'acc-2',
+      ok: true,
+      xUserId: '12345',
+      handle: 'alice',
+    }));
+    const transport = new WindowBridgeTransport(bridge);
+    await expect(transport.openLogin('acc-1')).rejects.toThrow('アカウントIDが一致しません');
+  });
+
+  it('openLogin はブリッジが無ければ未接続エラーになる', async () => {
+    const transport = new WindowBridgeTransport(undefined);
+    await expect(transport.openLogin('acc-1')).rejects.toBeInstanceOf(DesktopNotConnectedError);
+  });
+});

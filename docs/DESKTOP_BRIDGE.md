@@ -46,6 +46,8 @@ preload（electron/src/preload.cjs）
 | `result` | ホスト → アプリ | `{ source, kind, ...ExtensionJobResult }`（id / ok / data? / error? / code? / at） |
 | `list-sessions` | アプリ → ホスト | `{ source, kind }` |
 | `sessions` | ホスト → アプリ | `{ source, kind, sessions: [{ accountId, handle }] }`（旧形式の `accountIds` にも対応） |
+| `open-login` | アプリ → ホスト | `{ source, kind, accountId }`（P1-03。ログイン用ウィンドウを開く） |
+| `open-login-result` | ホスト → アプリ | `{ source, kind, accountId, ok, xUserId?, handle?, error?, code? }`（P1-03） |
 
 - 相関はジョブの `id` で取る（応答の `id` と一致すること）。
 - 失敗の分類 `code` は拡張と同じ6種
@@ -83,6 +85,9 @@ preload（electron/src/preload.cjs）
   `{ ok: false, code: 'not_implemented' }` の結果を返す。
   Phase 0 ではホスト部品の接続が無いため、すべてのジョブは
   `not_implemented` になる。
+- `open-login` → `deps.openLogin` があれば委譲し、
+  `open-login-result` を返す。無ければ
+  `{ ok: false, code: 'not_implemented' }` を返す（P1-03）。
 - 形の壊れた入力には例外を投げず、`ok: false` の result を返す
   （id が取れないときは `id: ''`・`code: 'unknown'`）。
   未知の kind は `not_implemented` の結果を返す。
@@ -120,7 +125,35 @@ JS/CSS が読めない。HTTP 配信時もルート・サブパスどちらで�
   インターフェースと `WindowBridgeTransport`
   （`window.xManagerDesktop` を使う。ブリッジ不在なら
   `DesktopNotConnectedError`、時間切れは `DesktopTimeoutError`）。
-- `src/executor/DesktopExecutor.ts`：`Executor` のデスクトップ版。
+## 6. ログイン取り込み（P1-03）
+
+デスクトップ版では auth_token を手入力で取得しない。アカウント
+ごとの partition でログイン用ウィンドウを開き、ユーザーが x.com
+に普通にログインすると、X が発行した auth_token / ct0 がその
+partition の Cookie として保存される。
+
+- 流れ：アプリの Accounts 画面（デスクトップモード）で
+  「ログイン」→ `open-login`（`accountId`）→ ホストが
+  `electron/src/loginImport.cjs` の `runLoginImport` を実行。
+  ログイン用ウィンドウで `https://x.com/i/flow/login` を開き、
+  auth_token の出現を 2 秒間隔でポーリング（最長 5 分）する。
+  出現したらウィンドウを閉じ、D-04 の読み取り（verify_credentials）
+  で `{ id, handle }` を確定して `open-login-result` を返す。
+  アプリ側は検出したハンドルで台帳を更新する。
+- ログイン用ウィンドウにはブリッジの preload を付けない。
+  x.com のページ文脈から `window.xManagerDesktop.invoke` に
+  届いてはならないため。partition / contextIsolation /
+  nodeIntegration 無効 / sandbox 有効は通常のホストウィンドウと同じ。
+- タイムアウト：ホスト側のログイン待ちは 5 分
+  （`LOGIN_IMPORT_TIMEOUT_MS`）、アプリ側の輸送層は 6 分
+  （`OPEN_LOGIN_TIMEOUT_MS`）。ウィンドウをユーザーが閉じた
+  場合は専用の文言で失敗する。
+- CLI でも同じ流れを試せる：
+  `npm run desktop -- --login-import --account <id>`
+  （`--proxy` と併用可。結果を JSON で出す）。
+  実ログインの成否は x.com へ届く環境（実PC）でのみ確認できる。
+
+## 8. アプリ側の部品
   失敗文言はデスクトップ向け（`DESKTOP_ERROR_MESSAGES`）。
   メディアは payload に inline、タイムアウトは
   `MEDIA_JOB_TIMEOUT_MS`、転送上限は拡張版と同じ

@@ -54,6 +54,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: 'built',
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -69,6 +70,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: null,
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -84,6 +86,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: null,
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -99,6 +102,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: null,
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -114,6 +118,7 @@ describe('parseArgs', () => {
       postText: 'hello',
       appMode: null,
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -134,6 +139,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: null,
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -160,6 +166,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: 'built',
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -175,6 +182,7 @@ describe('parseArgs', () => {
       postText: null,
       appMode: 'dev',
       helloCheck: false,
+      loginImport: false,
     });
   });
 
@@ -182,6 +190,27 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--app', '--app-dev'])).toThrow(/--app/);
     expect(() => parseArgs(['--app', '--url', 'https://x.com/'])).toThrow(/--url/);
     expect(() => parseArgs(['--app-dev', '--url', 'https://x.com/'])).toThrow(/--url/);
+  });
+
+  it('--login-import はログイン取り込みフラグを立てる（--account / --proxy と併用可）', () => {
+    const args = parseArgs([
+      '--login-import',
+      '--account',
+      'acc-1',
+      '--proxy',
+      'http://proxy.example.com:8080',
+    ]);
+    expect(args.loginImport).toBe(true);
+    expect(args.accountId).toBe('acc-1');
+    expect(args.proxy).toEqual({ scheme: 'http', host: 'proxy.example.com', port: 8080 });
+    // --login-import 単体ではアプリ画面の既定に倒れない。
+    expect(args.appMode).toBeNull();
+    expect(args.url).toBe('https://x.com/');
+  });
+
+  it('--login-import と --app / --app-dev の併用は受け付けない', () => {
+    expect(() => parseArgs(['--login-import', '--app'])).toThrow(/--login-import/);
+    expect(() => parseArgs(['--login-import', '--app-dev'])).toThrow(/--login-import/);
   });
 
   it('--hello-check は --app / --app-dev と組み合わせて使う', () => {

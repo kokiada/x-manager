@@ -77,6 +77,7 @@ function parseArgs(argv) {
   let postText = null;
   let appMode = null;
   let helloCheck = false;
+  let loginImport = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--account') {
@@ -116,6 +117,8 @@ function parseArgs(argv) {
       appMode = 'dev';
     } else if (arg === '--hello-check') {
       helloCheck = true;
+    } else if (arg === '--login-import') {
+      loginImport = true;
     } else {
       throw new Error(`未知のフラグです：${arg}`);
     }
@@ -129,11 +132,22 @@ function parseArgs(argv) {
   if (helloCheck && appMode === null) {
     throw new Error('--hello-check には --app または --app-dev が必要です。');
   }
+  if (loginImport && appMode !== null) {
+    throw new Error('--login-import と --app / --app-dev は同時に指定できません。');
+  }
   // 既定の起動はアプリ画面（ビルド済み）。D-02 の最小ホスト時代は
   // 既定が x.com で、通常起動のたびに X が開く混乱の元になった。
   // チェック系フラグも --url も無い通常起動はアプリを開く。
   // x.com を開きたいときは --url https://x.com/ を明示する。
-  if (appMode === null && !urlFlag && !smoke && !verifySession && !readCheck && !postCheck) {
+  if (
+    appMode === null &&
+    !urlFlag &&
+    !smoke &&
+    !verifySession &&
+    !readCheck &&
+    !postCheck &&
+    !loginImport
+  ) {
     appMode = 'built';
   }
   if (appMode === 'built') {
@@ -157,7 +171,7 @@ function parseArgs(argv) {
   }
   // アカウントIDの検証は partitionName に任せるが、ここでも早めに弾く。
   partitionName(accountId);
-  return { accountId, url, smoke, proxy, verifySession, readCheck, postCheck, postText, appMode, helloCheck };
+  return { accountId, url, smoke, proxy, verifySession, readCheck, postCheck, postText, appMode, helloCheck, loginImport };
 }
 
 /**

@@ -7,14 +7,22 @@ import {
 import {
   isDesktopHelloAck,
   isDesktopJobResult,
+  isDesktopOpenLoginResult,
   isDesktopSessionsMessage,
   normalizeDesktopSessions,
   type DesktopHelloAckMessage,
   type DesktopJobResultMessage,
+  type DesktopOpenLoginResult,
   type ExtensionJob,
   type ExtensionJobResult,
   type ExtensionSession,
 } from './desktopProtocol';
+
+/**
+ * ログイン取り込みの制限時間。ユーザーがログイン用ウィンドウで
+ * 操作する時間を入れて、ホスト側の待ち時間（5分）より長めにする。
+ */
+export const OPEN_LOGIN_TIMEOUT_MS = 360000;
 
 /**
  * デスクトップアプリとして起動されていない
@@ -69,6 +77,11 @@ export interface DesktopTransport {
   sendJob(job: ExtensionJob): Promise<ExtensionJobResult>;
   /** ホストに連携済みのアカウント（ID＋ハンドル）一覧を聞く。 */
   listSessions(): Promise<ExtensionSession[]>;
+  /**
+   * ログイン用ウィンドウを開いてセッションを取り込む（P1-03）。
+   * ユーザーのログイン完了をホスト側で待つため、制限時間は長め。
+   */
+  openLogin(accountId: string): Promise<DesktopOpenLoginResult>;
 }
 
 /** preload が差し込む window.xManagerDesktop を読むための窓口。 */
@@ -161,5 +174,18 @@ export class WindowBridgeTransport implements DesktopTransport {
     });
     // 新形式（sessions）と旧形式（accountIds）のどちらが来ても同じ形に揃える。
     return normalizeDesktopSessions(reply);
+  }
+
+  async openLogin(accountId: string): Promise<DesktopOpenLoginResult> {
+    const reply = await this.request(
+      { source: PAGE_SOURCE, kind: 'open-login', accountId },
+      isDesktopOpenLoginResult,
+      OPEN_LOGIN_TIMEOUT_MS,
+      'デスクトップでのログイン',
+    );
+    if (reply.accountId !== accountId) {
+      throw new Error('デスクトップホストからの返事のアカウントIDが一致しません（ログイン）。');
+    }
+    return reply;
   }
 }

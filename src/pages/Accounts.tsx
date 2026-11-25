@@ -6,7 +6,7 @@ import type { Account, NewAccount } from '../db/types';
 import { createAccount, createAccountWithId, recordFollowerHistory, updateAccount } from '../db/repository';
 import { isPlaceholderHandle, planSessionImport } from '../lib/sessionImport';
 import type { SessionAccountToCreate } from '../lib/sessionImport';
-import { executor } from '../executor';
+import { executor, WindowBridgeTransport } from '../executor';
 import { accountsToCsv } from '../lib/accountCsv';
 import { downloadTextFile } from '../lib/csv';
 import { compactCount, checkedAtLabel } from '../lib/format';
@@ -45,6 +45,35 @@ export function Accounts() {
   const { mode, linkedIds, linkedSessions, refresh: refreshLinked } = useLinkedAccounts();
   const [refreshingLink, setRefreshingLink] = useState(false);
   const [importing, setImporting] = useState(false);
+  // P1-03: デスクトップでのログイン取り込み。ブリッジ経由でホストの
+  // ログイン用ウィンドウを開く。1件ずつ（ログイン中は他の操作を止める）。
+  const desktopTransport = useMemo(() => new WindowBridgeTransport(), []);
+  const [loggingInId, setLoggingInId] = useState<string | null>(null);
+
+  const runDesktopLogin = async (account: Account) => {
+    setLoggingInId(account.id);
+    try {
+      const result = await desktopTransport.openLogin(account.id);
+      if (!result.ok) {
+        toast.push(`ログインできませんでした：${result.error ?? '原因不明のエラー'}`, 'err');
+        return;
+      }
+      const handle = result.handle ?? account.handle;
+      await updateAccount(account.id, {
+        handle,
+        displayName: handle,
+        status: 'logged_in',
+      });
+      toast.push(`@${handle} でログインしました`, 'ok');
+    } catch (err) {
+      toast.push(
+        `ログインできませんでした：${errorMessageOf(err, '原因不明のエラー')}`,
+        'err',
+      );
+    } finally {
+      setLoggingInId(null);
+    }
+  };
 
   const groupName = (id: string | null) =>
     id ? (groups?.find((g) => g.id === id)?.name ?? '—') : '未分類';
@@ -397,10 +426,21 @@ export function Accounts() {
               <Button
                 small
                 onClick={() => runCheck(a)}
-                disabled={checkingId === a.id || bulkProgress !== null}
+                disabled={checkingId === a.id || bulkProgress !== null || loggingInId !== null}
               >
                 {checkingId === a.id ? '確認中…' : 'チェック'}
               </Button>{' '}
+              {mode === 'desktop' && (
+                <>
+                  <Button
+                    small
+                    onClick={() => runDesktopLogin(a)}
+                    disabled={loggingInId !== null || checkingId !== null || bulkProgress !== null}
+                  >
+                    {loggingInId === a.id ? 'ログイン待ち…' : 'ログイン'}
+                  </Button>{' '}
+                </>
+              )}
               <Button small variant="ghost" onClick={() => setModal({ kind: 'edit', account: a })}>
                 編集
               </Button>

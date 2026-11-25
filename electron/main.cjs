@@ -14,6 +14,10 @@
  *                                     # 相当の読み取りを実行（結果を JSON で出す）
  *   npm run desktop -- --post-check --text "hello"  # ページ文脈 fetch で投稿を実行
  *                                     # （結果を JSON で出す。実際に投稿するので注意）
+ *   npm run desktop -- --login-import --account <id>  # P1-03: ログイン用
+ *                                     # ウィンドウを開き、ログイン完了を検知して
+ *                                     # アカウントを取り込む（結果を JSON で出す）
+ *                                     # --proxy とも併用可
  *
  * --smoke は終了コード 0（表示OK）/ 1（失敗）で終わる。
  * --read-check は終了コード 0（読み取りOK）/ 1（失敗）で終わるつもり
@@ -31,17 +35,21 @@ const { createHostWindow, parseArgs, runHelloCheck, runSmoke } = require('./src/
 const { verifySession } = require('./src/session.cjs');
 const { runReadCheckForAccount } = require('./src/readCheck.cjs');
 const { runPostTweetForAccount } = require('./src/postTweet.cjs');
+const { runLoginImport } = require('./src/loginImport.cjs');
 const { createBridgeHandler } = require('./src/bridge.cjs');
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const electron = { BrowserWindow, session };
   // D-06: デスクトップブリッジ。レンダラ（preload の
   // window.xManagerDesktop.invoke）からの IPC をブリッジハンドラへ
   // 渡す。--smoke / --read-check 等の既存経路には影響しない。
-  const bridgeHandler = createBridgeHandler();
+  // P1-03: open-login はログイン取り込みフローへ委譲する。
+  const bridgeHandler = createBridgeHandler({
+    openLogin: ({ accountId }) => runLoginImport(electron, { accountId }),
+  });
   ipcMain.handle('xmanager:bridge', (_event, message) => bridgeHandler(message));
   await app.whenReady();
-  const electron = { BrowserWindow, session };
   if (args.postCheck) {
     // ウィンドウを開いてページ文脈で CreateTweet を fetch し、
     // { postId, postUrl } だけ確認する。実際に投稿するため、
@@ -65,6 +73,20 @@ async function main() {
     const result = await runReadCheckForAccount(electron, {
       accountId: args.accountId,
       url: args.url,
+      proxy: args.proxy ?? undefined,
+    });
+    console.log(JSON.stringify(result));
+    process.exitCode = result.ok ? 0 : 1;
+    app.quit();
+    return;
+  }
+  if (args.loginImport) {
+    // P1-03: ログイン用ウィンドウを開き、ログイン完了を検知して
+    // アカウントを取り込む。結果は { ok, accountId, xUserId, handle }
+    // か { ok: false, accountId, error }。トークンの値は出さない。
+    // --proxy / --account で partition とプロキシを指定できる。
+    const result = await runLoginImport(electron, {
+      accountId: args.accountId,
       proxy: args.proxy ?? undefined,
     });
     console.log(JSON.stringify(result));

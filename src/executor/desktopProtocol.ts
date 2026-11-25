@@ -59,17 +59,42 @@ export interface DesktopSessionsMessage {
   accountIds?: string[];
 }
 
+/** アプリ → ホスト：ログイン用ウィンドウを開いて取り込む（P1-03）。 */
+export interface DesktopOpenLoginMessage {
+  source: typeof PAGE_SOURCE;
+  kind: 'open-login';
+  accountId: string;
+}
+
+/** ログイン取り込みの結果。トークンの値は含まない。 */
+export interface DesktopOpenLoginResult {
+  ok: boolean;
+  accountId: string;
+  xUserId?: string;
+  handle?: string;
+  error?: string;
+  code?: string;
+}
+
+/** ホスト → アプリ：ログイン取り込みの結果。 */
+export interface DesktopOpenLoginResultMessage extends DesktopOpenLoginResult {
+  source: typeof DESKTOP_HOST_SOURCE;
+  kind: 'open-login-result';
+}
+
 /** アプリ → ホスト：IPC 経由で送るメッセージ。 */
 export type DesktopPageMessage =
   | DesktopHelloMessage
   | ({ source: typeof PAGE_SOURCE; kind: 'job' } & ExtensionJob)
-  | { source: typeof PAGE_SOURCE; kind: 'list-sessions' };
+  | { source: typeof PAGE_SOURCE; kind: 'list-sessions' }
+  | DesktopOpenLoginMessage;
 
 /** ホスト → アプリ：IPC 経由で返すメッセージ。 */
 export type DesktopHostMessage =
   | DesktopHelloAckMessage
   | DesktopJobResultMessage
-  | DesktopSessionsMessage;
+  | DesktopSessionsMessage
+  | DesktopOpenLoginResultMessage;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -78,7 +103,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** デスクトップホストからのメッセージかどうか（送信元と形だけ見る）。 */
 export function isDesktopMessage(value: unknown): value is DesktopHostMessage {
   if (!isRecord(value) || value.source !== DESKTOP_HOST_SOURCE) return false;
-  return value.kind === 'hello-ack' || value.kind === 'result' || value.kind === 'sessions';
+  return (
+    value.kind === 'hello-ack' ||
+    value.kind === 'result' ||
+    value.kind === 'sessions' ||
+    value.kind === 'open-login-result'
+  );
+}
+
+/** ログイン取り込みの結果メッセージかどうか。 */
+export function isDesktopOpenLoginResult(value: unknown): value is DesktopOpenLoginResultMessage {
+  return (
+    isRecord(value) &&
+    value.source === DESKTOP_HOST_SOURCE &&
+    value.kind === 'open-login-result' &&
+    typeof value.accountId === 'string' &&
+    typeof value.ok === 'boolean' &&
+    (value.xUserId === undefined || typeof value.xUserId === 'string') &&
+    (value.handle === undefined || typeof value.handle === 'string') &&
+    (value.error === undefined || typeof value.error === 'string') &&
+    (value.code === undefined || typeof value.code === 'string')
+  );
 }
 
 export function isDesktopHelloAck(value: unknown): value is DesktopHelloAckMessage {

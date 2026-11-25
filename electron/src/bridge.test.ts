@@ -153,3 +153,78 @@ describe('createBridgeHandler', () => {
     });
   });
 });
+
+describe('open-login（P1-03）', () => {
+  it('deps.openLogin が無ければ not_implemented を返す', async () => {
+    const handle = createBridgeHandler();
+    const reply = await handle({ source: 'x-manager', kind: 'open-login', accountId: 'acc-1' });
+    expect(reply).toMatchObject({
+      source: DESKTOP_HOST_SOURCE,
+      kind: 'open-login-result',
+      accountId: 'acc-1',
+      ok: false,
+      code: 'not_implemented',
+    });
+  });
+
+  it('deps.openLogin の成功結果を open-login-result に整える', async () => {
+    const handle = createBridgeHandler({
+      openLogin: async ({ accountId }: { accountId: string }) => ({
+        ok: true,
+        accountId,
+        xUserId: '12345',
+        handle: 'alice',
+      }),
+    });
+    const reply = await handle({ source: 'x-manager', kind: 'open-login', accountId: 'acc-1' });
+    expect(reply).toEqual({
+      source: DESKTOP_HOST_SOURCE,
+      kind: 'open-login-result',
+      accountId: 'acc-1',
+      ok: true,
+      xUserId: '12345',
+      handle: 'alice',
+    });
+  });
+
+  it('deps.openLogin の失敗結果をそのまま返す（token 値は出ない）', async () => {
+    const handle = createBridgeHandler({
+      openLogin: async ({ accountId }: { accountId: string }) => ({
+        ok: false,
+        accountId,
+        error: 'ログインが完了しませんでした（時間切れ）。',
+      }),
+    });
+    const reply = await handle({ source: 'x-manager', kind: 'open-login', accountId: 'acc-1' });
+    expect(reply).toMatchObject({
+      kind: 'open-login-result',
+      accountId: 'acc-1',
+      ok: false,
+      error: 'ログインが完了しませんでした（時間切れ）。',
+    });
+  });
+
+  it('accountId が無ければ unknown の失敗を返す', async () => {
+    const handle = createBridgeHandler({
+      openLogin: async () => ({ ok: true, accountId: '', xUserId: '1', handle: 'alice' }),
+    });
+    const reply = await handle({ source: 'x-manager', kind: 'open-login', accountId: '' });
+    expect(reply).toMatchObject({ kind: 'open-login-result', ok: false, code: 'unknown' });
+  });
+
+  it('委譲先が例外を投げても ok:false の open-login-result になる', async () => {
+    const handle = createBridgeHandler({
+      openLogin: async () => {
+        throw new Error('ログイン画面を開けませんでした');
+      },
+    });
+    const reply = await handle({ source: 'x-manager', kind: 'open-login', accountId: 'acc-1' });
+    expect(reply).toMatchObject({
+      kind: 'open-login-result',
+      accountId: 'acc-1',
+      ok: false,
+      code: 'unknown',
+      error: 'ログイン画面を開けませんでした',
+    });
+  });
+});

@@ -11,6 +11,8 @@
  * deps 経由で差し込む（テストでは偽物に差し替え）。
  *  - deps.listSessions: () => [{ accountId, handle }]（無ければ空配列）
  *  - deps.handleJob: (job) => result（無ければ not_implemented）
+ *  - deps.openLogin: ({ accountId }) => loginImport の結果
+ *    （無ければ not_implemented。P1-03）
  *
  * 壊れた入力には例外を投げず、ok:false の result を返す。
  * トークンの値はこの経路には出ない（セッションは partition 内）。
@@ -71,10 +73,24 @@ function normalizeSessions(value) {
   return sessions;
 }
 
+/** open-login の失敗応答を1件作る（kind は open-login-result）。 */
+function failOpenLoginResult(accountId, code, error) {
+  return {
+    source: DESKTOP_HOST_SOURCE,
+    kind: 'open-login-result',
+    accountId: typeof accountId === 'string' ? accountId : '',
+    ok: false,
+    code,
+    error,
+  };
+}
+
 /**
  * ブリッジハンドラを作る。`async (message) => response` を返す。
  * hello → hello-ack、list-sessions → sessions、job → 結果
- * （deps.handleJob が無ければ not_implemented）。
+ * （deps.handleJob が無ければ not_implemented）、
+ * open-login → open-login-result（deps.openLogin が無ければ
+ * not_implemented。P1-03）。
  * 形の壊れた入力や未知の kind にも例外を投げず、ok:false の
  * result を返す。
  */
@@ -96,6 +112,44 @@ function createBridgeHandler(deps = {}) {
         const sessions =
           typeof deps.listSessions === 'function' ? normalizeSessions(await deps.listSessions()) : [];
         return { source: DESKTOP_HOST_SOURCE, kind: 'sessions', sessions };
+      }
+      if (message.kind === 'open-login') {
+        // P1-03: ログイン用ウィンドウを開いてセッションを取り込む。
+        if (
+          typeof message.accountId !== 'string' ||
+          message.accountId.length === 0
+        ) {
+          return failOpenLoginResult(message.accountId, 'unknown', 'アカウントIDがありません。');
+        }
+        if (typeof deps.openLogin !== 'function') {
+          return failOpenLoginResult(message.accountId, 'not_implemented', NOT_IMPLEMENTED_ERROR);
+        }
+        try {
+          const result = await deps.openLogin({ accountId: message.accountId });
+          if (!isRecord(result) || typeof result.ok !== 'boolean') {
+            return failOpenLoginResult(
+              message.accountId,
+              'unknown',
+              'ホストのログイン結果の形が不正です。',
+            );
+          }
+          return {
+            source: DESKTOP_HOST_SOURCE,
+            kind: 'open-login-result',
+            accountId: message.accountId,
+            ok: result.ok,
+            ...(typeof result.xUserId === 'string' ? { xUserId: result.xUserId } : {}),
+            ...(typeof result.handle === 'string' ? { handle: result.handle } : {}),
+            ...(typeof result.error === 'string' ? { error: result.error } : {}),
+            ...(typeof result.code === 'string' ? { code: result.code } : {}),
+          };
+        } catch (err) {
+          return failOpenLoginResult(
+            message.accountId,
+            'unknown',
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       }
       if (message.kind === 'job') {
         if (!isJobShape(message)) {
