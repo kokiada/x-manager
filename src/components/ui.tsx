@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useId,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -57,6 +58,27 @@ export function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------- Tooltip ------------------------------ */
+
+/**
+ * 説明文をツールチップで表示する。ホバーとキーボードフォーカスで開く。
+ * 吹き出し自体は濃色にして、白基調の画面でも読めるようにしている。
+ * 使い方は `<Tooltip label="説明文"><span>？</span></Tooltip>`。
+ */
+export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <span className="tooltip">
+      <span className="tooltip-trigger" tabIndex={0} aria-describedby={id}>
+        {children}
+      </span>
+      <span className="tooltip-bubble" role="tooltip" id={id}>
+        {label}
+      </span>
+    </span>
   );
 }
 

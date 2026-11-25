@@ -1,26 +1,27 @@
 /* ============================================================
    x-manager design system
-   Control-room charcoal + signal amber. Flat ledger surfaces,
-   1px rules, tabular mono data. No gradients, no card clichés.
+   White-based modern. Light surfaces, 1px rules, tabular mono
+   data. No gradients, no card clichés.
    ============================================================ */
 
 :root {
   /* color tokens */
-  --c-ink: #0a0c0e;        /* app background */
-  --c-panel: #101317;      /* ledger surface */
-  --c-raise: #171b21;      /* raised surface / hover */
-  --c-line: #242a31;       /* hairline rules */
-  --c-line-strong: #333b44;
-  --c-paper: #e9edf1;      /* primary text */
-  --c-faded: #8b95a1;      /* secondary text */
-  --c-dim: #59636e;        /* tertiary text */
-  --c-amber: #f5a623;      /* signal accent */
-  --c-amber-ink: #14100a;  /* text on amber */
-  --c-ok: #34b36b;
-  --c-warn: #f5a623;
-  --c-bad: #e5484d;
-  --c-info: #58a6ff;
-  --c-off: #5a636d;
+  --c-ink: #f6f7f9;        /* app background */
+  --c-panel: #ffffff;      /* ledger surface */
+  --c-raise: #eef1f4;      /* raised surface / hover */
+  --c-line: #e3e7ec;       /* hairline rules */
+  --c-line-strong: #c9d1d9;
+  --c-paper: #171a21;      /* primary text */
+  --c-faded: #5b6470;      /* secondary text */
+  --c-dim: #8a94a3;        /* tertiary text */
+  --c-amber: #e60012;      /* signal accent (Kashima red) */
+  --c-amber-hover: #c90010; /* primary button hover */
+  --c-amber-ink: #ffffff;  /* text on accent */
+  --c-ok: #1f9d61;
+  --c-warn: #d97706;
+  --c-bad: #dc2626;
+  --c-info: #2563eb;
+  --c-off: #9aa3af;
 
   /* account status colors */
   --st-logged-in: var(--c-ok);
@@ -36,7 +37,7 @@
 
   /* spacing / shape */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  --radius: 4px;
+  --radius: 10px;
   --sidebar-w: 232px;
   --tabbar-h: 60px;
 }
@@ -215,8 +216,8 @@ button { font-family: inherit; }
 .btn:hover { border-color: var(--c-faded); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn.primary { background: var(--c-amber); border-color: var(--c-amber); color: var(--c-amber-ink); }
-.btn.primary:hover { background: #ffb63e; }
-.btn.danger { color: var(--c-bad); border-color: #57282b; }
+.btn.primary:hover { background: var(--c-amber-hover); }
+.btn.danger { color: var(--c-bad); border-color: #eec2c4; }
 .btn.danger:hover { border-color: var(--c-bad); }
 .btn.small { padding: 5px 10px; font-size: 12px; }
 .btn.ghost { background: transparent; }
@@ -243,7 +244,7 @@ button { font-family: inherit; }
   flex: none;
 }
 .badge.st-logged_in { color: var(--st-logged-in); }
-.badge.st-logged_out { color: #9aa3ad; }
+.badge.st-logged_out { color: var(--c-off); }
 .badge.st-locked { color: var(--st-locked); }
 .badge.st-frozen { color: var(--st-frozen); }
 .badge.st-connection_error { color: var(--st-connection-error); }
@@ -440,6 +441,50 @@ button { font-family: inherit; }
 }
 .toast.ok { border-left-color: var(--c-ok); }
 .toast.err { border-left-color: var(--c-bad); }
+
+/* ---------- tooltip ---------- */
+
+/* 説明文は画面上に長い文章で置かず、ツールチップで出す。吹き出し
+   自体は濃色にして、白基調の画面でも読めるようにしている。 */
+.tooltip { position: relative; display: inline-flex; flex: none; }
+.tooltip-trigger {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 50%;
+  color: var(--c-faded);
+  font-size: 11px; font-weight: 700; line-height: 1;
+  cursor: help;
+}
+.tooltip-trigger:hover, .tooltip-trigger:focus-visible {
+  color: var(--c-amber);
+  border-color: var(--c-amber);
+  outline: none;
+}
+.tooltip-bubble {
+  position: absolute;
+  left: 50%; bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  background: #171a21;
+  color: #ffffff;
+  font-size: 12px; font-weight: 400; line-height: 1.5; text-align: left;
+  padding: 7px 10px;
+  border-radius: 8px;
+  width: max-content;
+  max-width: 280px;
+  z-index: 70;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  box-shadow: 0 4px 16px rgba(23, 26, 33, 0.25);
+}
+.tooltip:hover .tooltip-bubble,
+.tooltip-trigger:focus-visible + .tooltip-bubble,
+.tooltip:focus-within .tooltip-bubble {
+  opacity: 1;
+  visibility: visible;
+}
 
 /* ---------- placeholder / misc ---------- */
 

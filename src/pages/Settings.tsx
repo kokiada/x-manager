@@ -16,7 +16,7 @@ import {
 } from '../executor';
 import { clearDemoData, isDemoAccount } from '../lib/demoData';
 import { APP_BUILD_TIME, APP_COMMIT, formatBuildTime } from '../lib/version';
-import { Button, useToast } from '../components/ui';
+import { Button, Tooltip, useToast } from '../components/ui';
 
 function ScheduleFields({
   legend,
@@ -198,7 +198,12 @@ export function Settings() {
         ))}
       </div>
 
-      <h2 className="section-title">実行方法（X連携）</h2>
+      <h2 className="section-title">
+        実行方法（X連携）
+        <Tooltip label="投稿やチェックをどこで実行するかを選びます。シミュレータは本物のXには届きません。">
+          <span aria-hidden="true">？</span>
+        </Tooltip>
+      </h2>
       <p className="faded" style={{ fontSize: 13 }}>
         投稿やチェックをどこで実行するかを選びます。「シミュレータ」は本物のXには届かない見本の動きです。
         「拡張」は Chrome 拡張「x-manager 実行役」に実際の操作を任せます（拡張の読み込みとアカウントの
