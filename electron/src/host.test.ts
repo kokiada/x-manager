@@ -42,17 +42,17 @@ function fakeElectron() {
 }
 
 describe('parseArgs', () => {
-  it('既定は smoke アカウント・x.com・通常起動', () => {
+  it('既定は smoke アカウント・ビルド済みアプリ・通常起動', () => {
     expect(parseArgs([])).toEqual({
       accountId: 'smoke',
-      url: X_URL,
+      url: appFileUrl(),
       smoke: false,
       proxy: null,
       verifySession: false,
       readCheck: false,
       postCheck: false,
       postText: null,
-      appMode: null,
+      appMode: 'built',
       helloCheck: false,
     });
   });

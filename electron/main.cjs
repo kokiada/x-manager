@@ -2,7 +2,8 @@
  * D-02: Electron 最小ホスト — エントリ。
  *
  * partition 1つで x.com を開くだけの最小構成。使い方：
- *   npm run desktop                 # x.com を開く
+ *   npm run desktop                 # ビルド済みアプリ画面を開く（既定）
+ *   npm run desktop -- --url https://x.com/   # x.com を開く
  *   npm run desktop -- --smoke       # 読み込み確認して終了（結果を JSON で出す）
  *   npm run desktop -- --smoke --url https://example.com/
  *   npm run desktop -- --app           # ビルド済みアプリ（dist/index.html）を開く

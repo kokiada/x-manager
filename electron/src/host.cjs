@@ -64,7 +64,7 @@ function appFileUrl(repoRoot = path.join(__dirname, '..', '..')) {
   return pathToFileURL(indexPath).href;
 }
 
-/** コマンドライン引数を読む。既定は smoke アカウント・x.com・通常起動。 */
+/** コマンドライン引数を読む。既定は smoke アカウント・ビルド済みアプリ・通常起動。 */
 function parseArgs(argv) {
   let accountId = 'smoke';
   let url = X_URL;
@@ -128,6 +128,13 @@ function parseArgs(argv) {
   }
   if (helloCheck && appMode === null) {
     throw new Error('--hello-check には --app または --app-dev が必要です。');
+  }
+  // 既定の起動はアプリ画面（ビルド済み）。D-02 の最小ホスト時代は
+  // 既定が x.com で、通常起動のたびに X が開く混乱の元になった。
+  // チェック系フラグも --url も無い通常起動はアプリを開く。
+  // x.com を開きたいときは --url https://x.com/ を明示する。
+  if (appMode === null && !urlFlag && !smoke && !verifySession && !readCheck && !postCheck) {
+    appMode = 'built';
   }
   if (appMode === 'built') {
     url = appFileUrl();
